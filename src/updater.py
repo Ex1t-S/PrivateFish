@@ -14,6 +14,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import tkinter as tk
+from tkinter import ttk
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -99,15 +101,79 @@ def _find_exe_asset(release: dict) -> dict | None:
     return None
 
 
-def _download_asset(asset: dict, destination: Path) -> None:
+class _UpdateProgressWindow:
+    def __init__(self, current_version: str, remote_version: str, total_size: int):
+        self.total_size = total_size
+        self.root = tk.Tk()
+        self.root.title("Actualizacion disponible")
+        self.root.resizable(False, False)
+        self.root.attributes("-topmost", True)
+        self.root.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        frame = ttk.Frame(self.root, padding=18)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame,
+            text=f"Actualizando de {current_version} a {remote_version}",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(frame, text="Descargando la ultima version...").pack(anchor="w", pady=(6, 12))
+
+        maximum = total_size if total_size > 0 else 100
+        self.progress = ttk.Progressbar(frame, orient="horizontal", length=360, mode="determinate", maximum=maximum)
+        self.progress.pack(fill="x")
+
+        self.status = tk.StringVar(value="0%")
+        ttk.Label(frame, textvariable=self.status).pack(anchor="e", pady=(6, 0))
+
+        self._center()
+        self.root.update()
+
+    def _center(self) -> None:
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        x = (self.root.winfo_screenwidth() - width) // 2
+        y = (self.root.winfo_screenheight() - height) // 2
+        self.root.geometry(f"+{x}+{y}")
+
+    def update(self, downloaded: int) -> None:
+        if self.total_size > 0:
+            percent = min(100, int(downloaded * 100 / self.total_size))
+            self.progress["value"] = min(downloaded, self.total_size)
+            self.status.set(f"{percent}%")
+        else:
+            self.progress["value"] = (self.progress["value"] + 3) % 100
+            self.status.set(f"{downloaded // (1024 * 1024)} MB")
+        self.root.update_idletasks()
+        self.root.update()
+
+    def done(self) -> None:
+        self.status.set("Instalando actualizacion...")
+        self.root.update_idletasks()
+        self.root.update()
+
+    def close(self) -> None:
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
+
+
+def _download_asset(asset: dict, destination: Path, progress: _UpdateProgressWindow | None = None) -> None:
     request = urllib.request.Request(asset["url"], headers=_github_headers("application/octet-stream"))
     with urllib.request.urlopen(request, timeout=60) as response:
         with destination.open("wb") as f:
+            downloaded = 0
             while True:
                 chunk = response.read(1024 * 1024)
                 if not chunk:
                     break
                 f.write(chunk)
+                downloaded += len(chunk)
+                if progress:
+                    progress.update(downloaded)
 
 
 def _verify_digest(path: Path, digest: str | None) -> bool:
@@ -171,18 +237,22 @@ def check_for_update(current_version: str) -> bool:
             _log(f"release {remote_version} asset has no API URL")
             return False
 
+        expected_size = int(asset.get("size") or 0)
+        progress = _UpdateProgressWindow(current_version, remote_version, expected_size)
         target = Path(tempfile.gettempdir()) / asset["name"]
         _log(f"downloading {asset['name']} from release {remote_version}")
-        _download_asset(asset, target)
+        _download_asset(asset, target, progress)
+        progress.done()
 
-        expected_size = int(asset.get("size") or 0)
         if expected_size and target.stat().st_size != expected_size:
             _log(f"download size mismatch: {target.stat().st_size} != {expected_size}")
+            progress.close()
             target.unlink(missing_ok=True)
             return False
 
         if not _verify_digest(target, asset.get("digest")):
             _log("download digest mismatch")
+            progress.close()
             target.unlink(missing_ok=True)
             return False
 
