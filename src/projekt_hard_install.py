@@ -20,7 +20,7 @@ MAX_SCAN_DEPTH = 4
 class ProjektHardInstall:
     path: Path
     reason: str
-    exe_path: Path
+    exe_path: Path | None
     user_data_path: Path
     accounts_path: Path
     account_files: tuple[Path, ...]
@@ -36,6 +36,10 @@ class ProjektHardInstall:
     @property
     def has_accounts(self) -> bool:
         return bool(self.account_files)
+
+    @property
+    def has_game_exe(self) -> bool:
+        return self.exe_path is not None and self.exe_path.is_file()
 
 
 def _looks_like_projekt_hard(path: Path) -> bool:
@@ -90,6 +94,29 @@ def _install_from_game_exe(exe_path: Path, reason: str) -> ProjektHardInstall:
     )
 
 
+def _install_from_root(root: Path, reason: str) -> ProjektHardInstall:
+    user_data_path = root / USER_DATA_DIR
+    accounts_path = user_data_path / ACCOUNTS_DIR
+    exe_path = root / GAME_EXE_NAME
+    return ProjektHardInstall(
+        path=root,
+        reason=reason,
+        exe_path=exe_path if exe_path.is_file() else None,
+        user_data_path=user_data_path,
+        accounts_path=accounts_path,
+        account_files=_account_files(accounts_path),
+    )
+
+
+def _has_projekt_hard_structure(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+
+    name = path.name.lower()
+    has_name_hint = ("projekt" in name or "project" in name) and "hard" in name
+    return has_name_hint and (path / USER_DATA_DIR / ACCOUNTS_DIR).is_dir()
+
+
 def _find_game_exe(path: Path) -> Path | None:
     direct = path / GAME_EXE_NAME
     if direct.is_file():
@@ -104,6 +131,17 @@ def _find_game_exe(path: Path) -> Path | None:
     except OSError:
         return None
     return None
+
+
+def _add_install(found: list[ProjektHardInstall], seen: set[str], install: ProjektHardInstall) -> None:
+    try:
+        key = str(install.path.resolve()).lower()
+    except OSError:
+        key = str(install.path).lower()
+    if key in seen:
+        return
+    seen.add(key)
+    found.append(install)
 
 
 def _candidate_roots() -> list[Path]:
@@ -173,16 +211,22 @@ def find_projekt_hard_install(saved_path: str | None = None) -> ProjektHardInsta
         exe_path = _find_game_exe(path)
         if exe_path:
             return _install_from_game_exe(exe_path, "saved")
+        if _has_projekt_hard_structure(path):
+            return _install_from_root(path, "saved-structure")
 
     for root in _candidate_roots():
         exe_path = _find_game_exe(root)
         if exe_path:
             return _install_from_game_exe(exe_path, "root")
+        if _has_projekt_hard_structure(root):
+            return _install_from_root(root, "root-structure")
 
         for candidate in _iter_candidate_dirs(root):
             exe_path = _find_game_exe(candidate)
             if exe_path:
                 return _install_from_game_exe(exe_path, "scan")
+            if _has_projekt_hard_structure(candidate):
+                return _install_from_root(candidate, "scan-structure")
 
             if _looks_like_projekt_hard(candidate):
                 try:
@@ -193,3 +237,44 @@ def find_projekt_hard_install(saved_path: str | None = None) -> ProjektHardInsta
                     return _install_from_game_exe(exe_path, "scan")
 
     return None
+
+
+def find_all_projekt_hard_installs(saved_path: str | None = None) -> list[ProjektHardInstall]:
+    """Find every Projekt Hard installation folder containing Projekt-Hard.exe."""
+    found: list[ProjektHardInstall] = []
+    seen: set[str] = set()
+
+    if saved_path:
+        path = Path(saved_path).expanduser()
+        exe_path = _find_game_exe(path)
+        if exe_path:
+            _add_install(found, seen, _install_from_game_exe(exe_path, "saved"))
+        elif _has_projekt_hard_structure(path):
+            _add_install(found, seen, _install_from_root(path, "saved-structure"))
+
+    for root in _candidate_roots():
+        exe_path = _find_game_exe(root)
+        if exe_path:
+            _add_install(found, seen, _install_from_game_exe(exe_path, "root"))
+        elif _has_projekt_hard_structure(root):
+            _add_install(found, seen, _install_from_root(root, "root-structure"))
+
+        for candidate in _iter_candidate_dirs(root):
+            exe_path = _find_game_exe(candidate)
+            if exe_path:
+                _add_install(found, seen, _install_from_game_exe(exe_path, "scan"))
+                continue
+
+            if _has_projekt_hard_structure(candidate):
+                _add_install(found, seen, _install_from_root(candidate, "scan-structure"))
+                continue
+
+            if _looks_like_projekt_hard(candidate):
+                try:
+                    matches = candidate.rglob(GAME_EXE_NAME)
+                    for exe_path in matches:
+                        _add_install(found, seen, _install_from_game_exe(exe_path, "scan"))
+                except OSError:
+                    pass
+
+    return found
