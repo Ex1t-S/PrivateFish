@@ -32,6 +32,13 @@ jobs:
         shell: pwsh
         run: .\.venv313\Scripts\python.exe build.py --verify
 
+      - name: Clean release output
+        shell: pwsh
+        run: |
+          if (Test-Path dist) {
+            Remove-Item dist -Recurse -Force
+          }
+
       - name: Build executable
         shell: pwsh
         run: .\.venv313\Scripts\python.exe build.py
@@ -39,5 +46,5 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          files: dist/Huangue Fish bot v *.exe
           generate_release_notes: true

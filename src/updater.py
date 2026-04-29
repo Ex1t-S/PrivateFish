@@ -25,6 +25,7 @@ REPO_OWNER = "Ex1t-S"
 REPO_NAME = "PrivateFish"
 API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
 ASSET_PREFIX = "Huangue Fish bot v "
+NORMALIZED_ASSET_PREFIX = "huanguefishbotv"
 TOKEN_ENV_VAR = "PRIVATEFISH_GITHUB_TOKEN"
 TOKEN_FILE = "github_token.txt"
 CREATE_NO_WINDOW = 0x08000000
@@ -52,6 +53,10 @@ def _is_newer(remote: str, current: str) -> bool:
     remote_parts += (0,) * (max_len - len(remote_parts))
     current_parts += (0,) * (max_len - len(current_parts))
     return remote_parts > current_parts
+
+
+def _normalized_asset_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
 def _token_path() -> Path:
@@ -93,11 +98,38 @@ def _http_json(url: str) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _find_exe_asset(release: dict) -> dict | None:
+def _asset_matches(asset: dict, remote_version: str) -> bool:
+    name = str(asset.get("name") or "")
+    label = str(asset.get("label") or "")
+    if not name.lower().endswith(".exe"):
+        return False
+
+    candidates = [name, label]
+    normalized_remote = _normalized_asset_name(remote_version)
+    for candidate in candidates:
+        normalized = _normalized_asset_name(candidate)
+        if normalized.startswith(NORMALIZED_ASSET_PREFIX):
+            return normalized_remote in normalized
+    return False
+
+
+def _find_exe_asset(release: dict, remote_version: str) -> dict | None:
+    fallback = None
     for asset in release.get("assets", []):
         name = asset.get("name", "")
-        if name.startswith(ASSET_PREFIX) and name.lower().endswith(".exe"):
+        if _asset_matches(asset, remote_version):
             return asset
+        if (
+            fallback is None
+            and name.lower().endswith(".exe")
+            and _normalized_asset_name(name).startswith(NORMALIZED_ASSET_PREFIX)
+        ):
+            fallback = asset
+    if fallback:
+        _log(f"using fallback exe asset: {fallback.get('name')}")
+        return fallback
+    available = ", ".join(str(asset.get("name") or "?") for asset in release.get("assets", []))
+    _log(f"no matching exe asset found. available assets: {available}")
     return None
 
 
@@ -228,7 +260,7 @@ def check_for_update(current_version: str) -> bool:
         if not _is_newer(remote_version, current_version):
             return False
 
-        asset = _find_exe_asset(release)
+        asset = _find_exe_asset(release, remote_version)
         if not asset:
             _log(f"release {remote_version} has no matching exe asset")
             return False

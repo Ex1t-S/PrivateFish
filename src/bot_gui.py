@@ -715,7 +715,7 @@ class TimingSettingsWindow:
 class BotGUI:
     """GUI for the fishing bot - supports up to 8 simultaneous windows"""
     
-    BOT_VERSION = "1.1.2"  # Version for config validation and GUI display
+    BOT_VERSION = "1.1.3"  # Version for config validation and GUI display
     ACCENT_COLOR = "#FFBB00"  # Gold color used throughout the GUI
     ES_TEXT = {
         "Game Windows (up to 8)": "Ventanas del juego (hasta 8)",
@@ -878,6 +878,25 @@ class BotGUI:
                 self.config['projekt_hard_path'] = install_path
                 self.save_config()
             self.add_status(f"Projekt Hard detected: {install_path}")
+            self.add_status(f"Projekt Hard exe: {install.exe_path}")
+            if install.has_accounts:
+                account_names = ", ".join(account.name for account in install.account_files)
+                self.add_status(f"Projekt Hard accounts found: {len(install.account_files)} ({account_names})")
+            elif install.has_accounts_dir:
+                self.add_status(f"Projekt Hard accounts folder is empty: {install.accounts_path}")
+                messagebox.showwarning(
+                    "Cuentas no detectadas",
+                    "Encontre Projekt-Hard.exe, pero no hay cuentas creadas en:\n\n"
+                    f"{install.accounts_path}\n\n"
+                    "Abri el cliente y crea o guarda una cuenta antes de usar el bot.",
+                )
+            else:
+                self.add_status(f"Projekt Hard accounts folder is missing: {install.accounts_path}")
+                messagebox.showwarning(
+                    "Carpeta accounts no detectada",
+                    "Encontre Projekt-Hard.exe, pero falta la carpeta:\n\n"
+                    f"{install.accounts_path}",
+                )
             return
 
         self.config['projekt_hard_path'] = ''

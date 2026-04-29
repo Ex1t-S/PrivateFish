@@ -7,16 +7,35 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+GAME_EXE_NAME = "Projekt-Hard.exe"
+USER_DATA_DIR = "user_data"
+ACCOUNTS_DIR = "accounts"
 SCAN_NAME_HINTS = ("projekt", "project", "metin")
 STRONG_EXE_HINTS = ("projekt", "project", "metin")
 LAUNCHER_EXE_HINTS = ("client", "patcher", "launcher")
-MAX_SCAN_DEPTH = 2
+MAX_SCAN_DEPTH = 4
 
 
 @dataclass(frozen=True)
 class ProjektHardInstall:
     path: Path
     reason: str
+    exe_path: Path
+    user_data_path: Path
+    accounts_path: Path
+    account_files: tuple[Path, ...]
+
+    @property
+    def has_user_data(self) -> bool:
+        return self.user_data_path.is_dir()
+
+    @property
+    def has_accounts_dir(self) -> bool:
+        return self.accounts_path.is_dir()
+
+    @property
+    def has_accounts(self) -> bool:
+        return bool(self.account_files)
 
 
 def _looks_like_projekt_hard(path: Path) -> bool:
@@ -40,6 +59,51 @@ def _looks_like_projekt_hard(path: Path) -> bool:
         or has_hard_name and has_strong_exe
         or "metin" in name and has_launcher_exe
     )
+
+
+def _account_files(accounts_path: Path) -> tuple[Path, ...]:
+    if not accounts_path.is_dir():
+        return ()
+
+    try:
+        files = [
+            child
+            for child in accounts_path.iterdir()
+            if child.is_file() and child.suffix.lower() in {".json", ".cfg", ".ini", ".txt"}
+        ]
+    except OSError:
+        return ()
+    return tuple(sorted(files, key=lambda file_path: file_path.name.lower()))
+
+
+def _install_from_game_exe(exe_path: Path, reason: str) -> ProjektHardInstall:
+    root = exe_path.parent
+    user_data_path = root / USER_DATA_DIR
+    accounts_path = user_data_path / ACCOUNTS_DIR
+    return ProjektHardInstall(
+        path=root,
+        reason=reason,
+        exe_path=exe_path,
+        user_data_path=user_data_path,
+        accounts_path=accounts_path,
+        account_files=_account_files(accounts_path),
+    )
+
+
+def _find_game_exe(path: Path) -> Path | None:
+    direct = path / GAME_EXE_NAME
+    if direct.is_file():
+        return direct
+
+    try:
+        for child in path.iterdir():
+            if child.is_dir():
+                nested = child / GAME_EXE_NAME
+                if nested.is_file():
+                    return nested
+    except OSError:
+        return None
+    return None
 
 
 def _candidate_roots() -> list[Path]:
@@ -100,21 +164,32 @@ def _iter_candidate_dirs(root: Path, max_depth: int = MAX_SCAN_DEPTH):
 
 
 def find_projekt_hard_install(saved_path: str | None = None) -> ProjektHardInstall | None:
-    """Find a likely Projekt Hard installation folder.
+    """Find a Projekt Hard installation folder containing Projekt-Hard.exe.
 
     The scan is intentionally shallow so startup does not freeze on large drives.
     """
     if saved_path:
         path = Path(saved_path).expanduser()
-        if _looks_like_projekt_hard(path):
-            return ProjektHardInstall(path=path, reason="saved")
+        exe_path = _find_game_exe(path)
+        if exe_path:
+            return _install_from_game_exe(exe_path, "saved")
 
     for root in _candidate_roots():
-        if _looks_like_projekt_hard(root):
-            return ProjektHardInstall(path=root, reason="root")
+        exe_path = _find_game_exe(root)
+        if exe_path:
+            return _install_from_game_exe(exe_path, "root")
 
         for candidate in _iter_candidate_dirs(root):
+            exe_path = _find_game_exe(candidate)
+            if exe_path:
+                return _install_from_game_exe(exe_path, "scan")
+
             if _looks_like_projekt_hard(candidate):
-                return ProjektHardInstall(path=candidate, reason="scan")
+                try:
+                    exe_path = next(candidate.rglob(GAME_EXE_NAME))
+                except (OSError, StopIteration):
+                    exe_path = None
+                if exe_path:
+                    return _install_from_game_exe(exe_path, "scan")
 
     return None
