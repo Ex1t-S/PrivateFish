@@ -57,5 +57,7 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/Huangue Fish bot v *.exe
+          files: |
+            dist/Huangue Fish bot v *.exe
+            dist/update_manifest.json
           generate_release_notes: true

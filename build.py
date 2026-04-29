@@ -19,6 +19,9 @@ import sys
 import shutil
 import subprocess
 import argparse
+import hashlib
+import json
+import urllib.parse
 from pathlib import Path
 from datetime import datetime
 
@@ -72,6 +75,7 @@ SRC_DIR = os.path.join(SCRIPT_DIR, "src")
 MAIN_SCRIPT = os.path.join(SRC_DIR, "fishing_bot.py")
 SPEC_FILE = os.path.join(SCRIPT_DIR, "build.spec")
 VERSION_FILE = os.path.join(SCRIPT_DIR, "version.py")
+UPDATE_MANIFEST_FILE = os.path.join(SCRIPT_DIR, "dist", "update_manifest.json")
 
 # Patterns to find and replace
 APP_NAME_BASE = "Huangue Fish bot"
@@ -460,6 +464,7 @@ def run_pyinstaller():
             print_success(f"Executable: dist/{APP_NAME_VERSIONED}.exe")
             print_info(f"Uncompressed size: {file_size:.2f} MB")
             print_info(f"Build time: {build_time:.1f} seconds")
+            write_update_manifest(output_path)
             return True
         else:
             print_error("Build completed but executable not found!")
@@ -479,6 +484,36 @@ def run_pyinstaller():
         print()
         print_error(f"Unexpected error during build: {e}")
         return False
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_update_manifest(exe_path):
+    """Writes the Railway/GitHub updater manifest for this build."""
+    exe_name = os.path.basename(exe_path)
+    quoted_name = urllib.parse.quote(exe_name)
+    manifest = {
+        "version": VERSION,
+        "minVersion": "",
+        "downloadUrl": f"https://github.com/Ex1t-S/PrivateFish/releases/download/v{VERSION}/{quoted_name}",
+        "sha256": sha256_file(exe_path),
+        "size": os.path.getsize(exe_path),
+        "required": False,
+    }
+
+    try:
+        os.makedirs(os.path.dirname(UPDATE_MANIFEST_FILE), exist_ok=True)
+        with open(UPDATE_MANIFEST_FILE, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
+        print_success("Update manifest written: dist/update_manifest.json")
+    except Exception as e:
+        print_warning(f"Could not write update manifest: {e}")
 
 
 def update_required_versions():

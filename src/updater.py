@@ -17,6 +17,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from pathlib import Path
 REPO_OWNER = "Ex1t-S"
 REPO_NAME = "PrivateFish"
 API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
+RAILWAY_VERSION_URL = "https://privatefish-production.up.railway.app/version"
 ASSET_PREFIX = "Huangue Fish bot v "
 NORMALIZED_ASSET_PREFIX = "huanguefishbotv"
 TOKEN_ENV_VAR = "PRIVATEFISH_GITHUB_TOKEN"
@@ -94,6 +96,12 @@ def _github_headers(accept: str) -> dict[str, str]:
 
 def _http_json(url: str) -> dict:
     request = urllib.request.Request(url, headers=_github_headers("application/vnd.github+json"))
+    with urllib.request.urlopen(request, timeout=8) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _public_http_json(url: str) -> dict:
+    request = urllib.request.Request(url, headers={"User-Agent": f"{REPO_OWNER}-{REPO_NAME}-updater"})
     with urllib.request.urlopen(request, timeout=8) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -213,12 +221,36 @@ def _download_asset(asset: dict, destination: Path, progress: _UpdateProgressWin
     partial.replace(destination)
 
 
+def _download_url(url: str, destination: Path, progress: _UpdateProgressWindow | None = None) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": f"{REPO_OWNER}-{REPO_NAME}-updater"})
+    partial = destination.with_name(f"{destination.name}.part")
+    partial.unlink(missing_ok=True)
+    with urllib.request.urlopen(request, timeout=60) as response:
+        with partial.open("wb") as f:
+            downloaded = 0
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if progress:
+                    progress.update(downloaded)
+            f.flush()
+            os.fsync(f.fileno())
+    partial.replace(destination)
+
+
 def _verify_digest(path: Path, digest: str | None) -> bool:
     if not digest:
         return True
+    digest = digest.strip()
     if not digest.startswith("sha256:"):
+        expected = digest.lower()
+    else:
+        expected = digest.split(":", 1)[1].lower()
+    if not re.fullmatch(r"[a-f0-9]{64}", expected):
         return True
-    expected = digest.split(":", 1)[1].lower()
     actual = hashlib.sha256(path.read_bytes()).hexdigest().lower()
     return actual == expected
 
@@ -313,8 +345,94 @@ del "%~f0"
     )
 
 
+def _check_railway_update(current_version: str, current_exe: Path) -> bool:
+    manifest = _public_http_json(f"{RAILWAY_VERSION_URL}?current={current_version}")
+    if not manifest.get("ok", True):
+        _log(f"Railway version check failed: {manifest.get('error')}")
+        return False
+
+    remote_version = str(manifest.get("version") or "").lstrip("vV")
+    if not remote_version:
+        _log("Railway version manifest has no version")
+        return False
+
+    if not _is_newer(remote_version, current_version):
+        min_version = str(manifest.get("minVersion") or "")
+        if not min_version or not _is_newer(min_version, current_version):
+            return False
+
+    download_url = str(manifest.get("downloadUrl") or "")
+    if not download_url:
+        _log(f"Railway version {remote_version} has no downloadUrl")
+        return False
+
+    expected_size = int(manifest.get("size") or 0)
+    asset_name = Path(urllib.parse.urlparse(download_url).path).name or f"{ASSET_PREFIX}{remote_version}.exe"
+    progress = _UpdateProgressWindow(current_version, remote_version, expected_size)
+    target = Path(tempfile.gettempdir()) / f"huangue_update_{os.getpid()}_{asset_name}"
+    target.unlink(missing_ok=True)
+
+    _log(f"downloading {asset_name} from Railway manifest {remote_version}")
+    _download_url(download_url, target, progress)
+    progress.done()
+
+    if expected_size and target.stat().st_size != expected_size:
+        _log(f"Railway download size mismatch: {target.stat().st_size} != {expected_size}")
+        progress.close()
+        target.unlink(missing_ok=True)
+        return False
+
+    if not _verify_digest(target, str(manifest.get("sha256") or "")):
+        _log("Railway download digest mismatch")
+        progress.close()
+        target.unlink(missing_ok=True)
+        return False
+
+    _launch_replacer(target, current_exe, expected_size)
+    return True
+
+
+def _check_github_update(current_version: str, current_exe: Path) -> bool:
+    release = _http_json(API_URL)
+    remote_version = str(release.get("tag_name") or release.get("name") or "").lstrip("vV")
+    if not _is_newer(remote_version, current_version):
+        return False
+
+    asset = _find_exe_asset(release, remote_version)
+    if not asset:
+        _log(f"release {remote_version} has no matching exe asset")
+        return False
+
+    if not asset.get("url"):
+        _log(f"release {remote_version} asset has no API URL")
+        return False
+
+    expected_size = int(asset.get("size") or 0)
+    progress = _UpdateProgressWindow(current_version, remote_version, expected_size)
+    target = Path(tempfile.gettempdir()) / f"huangue_update_{os.getpid()}_{asset['name']}"
+    target.unlink(missing_ok=True)
+    _log(f"downloading {asset['name']} from release {remote_version}")
+    _download_asset(asset, target, progress)
+    progress.done()
+
+    if expected_size and target.stat().st_size != expected_size:
+        _log(f"download size mismatch: {target.stat().st_size} != {expected_size}")
+        progress.close()
+        target.unlink(missing_ok=True)
+        return False
+
+    if not _verify_digest(target, asset.get("digest")):
+        _log("download digest mismatch")
+        progress.close()
+        target.unlink(missing_ok=True)
+        return False
+
+    _launch_replacer(target, current_exe, expected_size)
+    return True
+
+
 def check_for_update(current_version: str) -> bool:
-    """Download and schedule replacement when a newer GitHub release exists.
+    """Download and schedule replacement when a newer release exists.
 
     Returns True only when the current process should exit immediately.
     """
@@ -323,45 +441,17 @@ def check_for_update(current_version: str) -> bool:
 
     current_exe = Path(sys.executable)
     try:
-        release = _http_json(API_URL)
-        remote_version = str(release.get("tag_name") or release.get("name") or "").lstrip("vV")
-        if not _is_newer(remote_version, current_version):
-            return False
-
-        asset = _find_exe_asset(release, remote_version)
-        if not asset:
-            _log(f"release {remote_version} has no matching exe asset")
-            return False
-
-        if not asset.get("url"):
-            _log(f"release {remote_version} asset has no API URL")
-            return False
-
-        expected_size = int(asset.get("size") or 0)
-        progress = _UpdateProgressWindow(current_version, remote_version, expected_size)
-        target = Path(tempfile.gettempdir()) / f"huangue_update_{os.getpid()}_{asset['name']}"
-        target.unlink(missing_ok=True)
-        _log(f"downloading {asset['name']} from release {remote_version}")
-        _download_asset(asset, target, progress)
-        progress.done()
-
-        if expected_size and target.stat().st_size != expected_size:
-            _log(f"download size mismatch: {target.stat().st_size} != {expected_size}")
-            progress.close()
-            target.unlink(missing_ok=True)
-            return False
-
-        if not _verify_digest(target, asset.get("digest")):
-            _log("download digest mismatch")
-            progress.close()
-            target.unlink(missing_ok=True)
-            return False
-
-        _launch_replacer(target, current_exe, expected_size)
-        return True
+        return _check_railway_update(current_version, current_exe)
     except (urllib.error.URLError, TimeoutError) as exc:
-        _log(f"network check failed: {exc}")
+        _log(f"Railway update check failed: {exc}")
+    except Exception as exc:
+        _log(f"Railway update failed: {exc}")
+
+    try:
+        return _check_github_update(current_version, current_exe)
+    except (urllib.error.URLError, TimeoutError) as exc:
+        _log(f"GitHub update check failed: {exc}")
         return False
     except Exception as exc:
-        _log(f"update failed: {exc}")
+        _log(f"GitHub update failed: {exc}")
         return False

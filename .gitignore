@@ -34,6 +34,8 @@ privatefish_upload.json
 
 # Release artifacts are uploaded to GitHub Releases, not committed
 dist/*.exe
+dist/update_manifest.json
+privatefish-backend/public/downloads/*.exe
 
 # Projekt Hard generated debug/training captures
 assets/projekt_hard_chat_*.png
