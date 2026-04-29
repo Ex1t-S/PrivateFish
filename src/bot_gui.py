@@ -715,7 +715,7 @@ class TimingSettingsWindow:
 class BotGUI:
     """GUI for the fishing bot - supports up to 8 simultaneous windows"""
     
-    BOT_VERSION = "1.1.8"  # Version for config validation and GUI display
+    BOT_VERSION = "1.1.9"  # Version for config validation and GUI display
     ACCENT_COLOR = "#FFBB00"  # Gold color used throughout the GUI
     ES_TEXT = {
         "Game Windows (up to 8)": "Ventanas del juego (hasta 8)",
@@ -751,7 +751,6 @@ class BotGUI:
         "Stop All": "Detener todo",
         "Resume All (F5)": "Reanudar todo (F5)",
         "Pause All (F5)": "Pausar todo (F5)",
-        "Donations:": "Donaciones:",
     }
     
     def __init__(self):
@@ -1724,58 +1723,6 @@ class BotGUI:
                 if DEBUG_PRINTS:
                     print(f"Error restoring window selection: {e}")
         
-        # Donations Section (at the very bottom)
-        donations_frame = tk.Frame(self.root, bg="#000000")
-        donations_frame.pack(fill=tk.X, side=tk.BOTTOM)
-        
-        donations_text_frame = tk.Frame(donations_frame, bg="#000000")
-        donations_text_frame.pack(pady=2)
-        
-        # Try to load BTC icon
-        btc_icon_path = get_resource_path("btc_icon.png")
-        if DEBUG_PRINTS:
-            print(f"Looking for BTC icon at: {btc_icon_path}")
-            print(f"BTC icon exists: {os.path.exists(btc_icon_path)}")
-        
-        if os.path.exists(btc_icon_path):
-            try:
-                btc_img = Image.open(btc_icon_path)
-                # Resize icon to small size (14x14)
-                btc_img = btc_img.resize((14, 14), Image.Resampling.LANCZOS)
-                self.btc_icon_photo = ImageTk.PhotoImage(btc_img)
-                
-                # Create icon label
-                btc_icon_label = tk.Label(donations_text_frame, image=self.btc_icon_photo, bg="#000000")
-                btc_icon_label.pack(side=tk.LEFT, padx=(1, 1))
-                if DEBUG_PRINTS:
-                    print("BTC icon loaded successfully!")
-            except Exception as e:
-                if DEBUG_PRINTS:
-                    print(f"Error loading BTC icon: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            if DEBUG_PRINTS:
-                print(f"BTC icon not found at {btc_icon_path}")
-        
-        self.btc_address = "3AGrrTf1v9QZsMPEoezYTRbf9JyW4nQtHu"
-        self.donations_label = tk.Label(donations_text_frame, 
-                                  text=f"Donations: {self.btc_address}",
-                                  font=("Courier New", 9),
-                                  bg="#000000", fg=BotGUI.ACCENT_COLOR,
-                                  wraplength=600, justify=tk.CENTER)
-        self.donations_label.pack(side=tk.LEFT, padx=3)
-        
-        copy_btn = tk.Button(donations_text_frame,
-                            text="📋",
-                            command=self.copy_btc_address,
-                            font=("Courier New", 10),
-                            bg="#000000", fg=BotGUI.ACCENT_COLOR,
-                            activebackground="#1a1a1a", activeforeground=BotGUI.ACCENT_COLOR,
-                            relief=tk.FLAT,
-                            cursor="hand2",
-                            padx=3, pady=1)
-        copy_btn.pack(side=tk.LEFT, padx=2)
         self.apply_language()
 
     def _display_text(self, text: str) -> str:
@@ -1792,8 +1739,6 @@ class BotGUI:
                 return text.replace("Reanudar todo", "Resume All")
             if text.startswith("⏸ Pausar todo"):
                 return text.replace("Pausar todo", "Pause All")
-            if text.startswith("Donaciones:"):
-                return text.replace("Donaciones:", "Donations:")
             return reverse.get(text, text)
 
         reverse = {v: k for k, v in self.ES_TEXT.items()}
@@ -1810,8 +1755,6 @@ class BotGUI:
             return text.replace("Resume All", "Reanudar todo")
         if text.startswith("⏸ Pause All"):
             return text.replace("Pause All", "Pausar todo")
-        if text.startswith("Donations:"):
-            return text.replace("Donations:", "Donaciones:")
         return self.ES_TEXT.get(text, text)
 
     def apply_language(self, widget=None):
@@ -2558,9 +2501,6 @@ class BotGUI:
             self.start_pause_btn.config(fg=new_color)
         if hasattr(self, 'stop_all_btn'):
             self.stop_all_btn.config(fg=new_color)
-        if hasattr(self, 'donations_label'):
-            self.donations_label.config(fg=new_color)
-        
         # Update window bait labels
         for i in range(MAX_WINDOWS):
             if i in self.window_bait_labels:
@@ -3417,11 +3357,3 @@ class BotGUI:
         self.save_config()
         self.root.destroy()
     
-    def copy_btc_address(self):
-        """Copies the BTC address to clipboard."""
-        try:
-            self.root.clipboard_clear()
-            self.root.clipboard_append(self.btc_address)
-            self.add_status(f"BTC address copied: {self.btc_address}")
-        except Exception as e:
-            self.add_status(f"Error copying address: {e}")
