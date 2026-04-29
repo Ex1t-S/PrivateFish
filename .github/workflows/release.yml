@@ -1,0 +1,43 @@
+name: Build release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.13"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m venv .venv313
+          .\.venv313\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv313\Scripts\python.exe -m pip install -r requirements.txt
+
+      - name: Verify build environment
+        shell: pwsh
+        run: .\.venv313\Scripts\python.exe build.py --verify
+
+      - name: Build executable
+        shell: pwsh
+        run: .\.venv313\Scripts\python.exe build.py
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          generate_release_notes: true
