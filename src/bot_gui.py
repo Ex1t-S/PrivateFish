@@ -715,7 +715,7 @@ class TimingSettingsWindow:
 class BotGUI:
     """GUI for the fishing bot - supports up to 8 simultaneous windows"""
     
-    BOT_VERSION = "1.1.6"  # Version for config validation and GUI display
+    BOT_VERSION = "1.1.7"  # Version for config validation and GUI display
     ACCENT_COLOR = "#FFBB00"  # Gold color used throughout the GUI
     ES_TEXT = {
         "Game Windows (up to 8)": "Ventanas del juego (hasta 8)",

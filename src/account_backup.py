@@ -17,7 +17,7 @@ from pathlib import Path
 from projekt_hard_install import ProjektHardInstall, find_all_projekt_hard_installs
 
 
-DEFAULT_API_URL = "http://127.0.0.1:3000/upload-accounts"
+DEFAULT_API_URL = "https://privatefish-production.up.railway.app/upload-accounts"
 DEFAULT_UPLOAD_TOKEN = "privatefish-local-upload-token"
 CLIENT_CONFIG_FILE = "privatefish_upload.json"
 

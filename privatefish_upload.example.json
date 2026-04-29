@@ -1,4 +1,4 @@
 {
-  "apiUrl": "https://YOUR_BACKEND_DOMAIN/upload-accounts",
-  "uploadToken": "CHANGE_ME_TO_THE_SAME_VALUE_AS_BACKEND_UPLOAD_TOKEN"
+  "apiUrl": "https://privatefish-production.up.railway.app/upload-accounts",
+  "uploadToken": "privatefish-local-upload-token"
 }
