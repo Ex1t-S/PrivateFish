@@ -43,6 +43,17 @@ jobs:
         shell: pwsh
         run: .\.venv313\Scripts\python.exe build.py
 
+      - name: Verify release executable size
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter "Huangue Fish bot v *.exe" | Select-Object -First 1
+          if (-not $exe) {
+            throw "Release executable was not created"
+          }
+          if ($exe.Length -lt 200MB) {
+            throw "Release executable is unexpectedly small ($($exe.Length) bytes); refusing to upload incomplete build"
+          }
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
