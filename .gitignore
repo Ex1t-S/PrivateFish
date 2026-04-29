@@ -17,6 +17,8 @@ venv/
 .venv313/
 .venv313tk/
 env/
+node_modules/
+**/.env
 
 # IDE settings
 .vscode/

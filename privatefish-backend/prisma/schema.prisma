@@ -1,0 +1,23 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ProjektHardAccountBackup {
+  id         String   @id @default(cuid())
+  machineId String
+  fileName  String
+  data      Json
+  fileSize  Int?
+  fileMtime DateTime?
+  source    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([machineId, fileName])
+  @@index([machineId])
+}
