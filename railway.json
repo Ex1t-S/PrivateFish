@@ -1,0 +1,12 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "cd privatefish-backend && npm ci && npx prisma generate"
+  },
+  "deploy": {
+    "startCommand": "cd privatefish-backend && npx prisma generate && npm start",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
