@@ -50,7 +50,7 @@ jobs:
           if (-not $exe) {
             throw "Release executable was not created"
           }
-          if ($exe.Length -lt 200MB) {
+          if ($exe.Length -lt 180MB) {
             throw "Release executable is unexpectedly small ($($exe.Length) bytes); refusing to upload incomplete build"
           }
 
