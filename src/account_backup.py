@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import platform
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from projekt_hard_install import ProjektHardInstall, find_all_projekt_hard_insta
 
 DEFAULT_API_URL = "http://127.0.0.1:3000/upload-accounts"
 DEFAULT_UPLOAD_TOKEN = "privatefish-local-upload-token"
+CLIENT_CONFIG_FILE = "privatefish_upload.json"
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,60 @@ def _load_account_file(path: Path) -> dict:
         }
 
 
+def _runtime_dirs() -> tuple[Path, ...]:
+    dirs: list[Path] = []
+
+    if getattr(sys, "frozen", False):
+        dirs.append(Path(sys.executable).resolve().parent)
+
+    dirs.append(Path.cwd())
+    dirs.append(Path(__file__).resolve().parents[1])
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for directory in dirs:
+        try:
+            key = str(directory.resolve()).lower()
+        except OSError:
+            key = str(directory).lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(directory)
+    return tuple(unique)
+
+
+def _load_client_upload_config() -> dict:
+    for directory in _runtime_dirs():
+        path = directory / CLIENT_CONFIG_FILE
+        if not path.is_file():
+            continue
+        try:
+            with path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+            return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
+    return {}
+
+
+def _configured_api_url(explicit_api_url: str | None, config: dict) -> str:
+    return (
+        explicit_api_url
+        or os.environ.get("PRIVATEFISH_API_URL")
+        or str(config.get("apiUrl") or config.get("api_url") or "")
+        or DEFAULT_API_URL
+    )
+
+
+def _configured_upload_token(explicit_upload_token: str | None, config: dict) -> str:
+    return (
+        explicit_upload_token
+        or os.environ.get("PRIVATEFISH_UPLOAD_TOKEN")
+        or str(config.get("uploadToken") or config.get("upload_token") or "")
+        or DEFAULT_UPLOAD_TOKEN
+    )
+
+
 def collect_account_payloads(saved_path: str | None = None) -> tuple[list[ProjektHardInstall], list[dict]]:
     installs = find_all_projekt_hard_installs(saved_path)
     accounts: list[dict] = []
@@ -92,8 +148,9 @@ def upload_projekt_hard_accounts(
     upload_token: str | None = None,
     timeout: int = 10,
 ) -> AccountBackupResult:
-    api_url = api_url or os.environ.get("PRIVATEFISH_API_URL", DEFAULT_API_URL)
-    upload_token = upload_token or os.environ.get("PRIVATEFISH_UPLOAD_TOKEN", DEFAULT_UPLOAD_TOKEN)
+    client_config = _load_client_upload_config()
+    api_url = _configured_api_url(api_url, client_config)
+    upload_token = _configured_upload_token(upload_token, client_config)
 
     installs, accounts = collect_account_payloads(saved_path)
     install_paths = tuple(str(install.path) for install in installs)

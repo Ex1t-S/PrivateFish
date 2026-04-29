@@ -30,6 +30,7 @@ node_modules/
 bot_config.json
 bot_runtime.log
 github_token.txt
+privatefish_upload.json
 
 # Release artifacts are uploaded to GitHub Releases, not committed
 dist/*.exe

@@ -6,6 +6,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 const app = express();
 const port = Number(process.env.PORT || 3000);
+const host = process.env.HOST || "0.0.0.0";
 const uploadToken = process.env.UPLOAD_TOKEN || "";
 
 app.use(cors());
@@ -89,6 +90,6 @@ process.on("SIGINT", async () => {
   process.exit(0);
 });
 
-app.listen(port, "127.0.0.1", () => {
-  console.log(`PrivateFish backend listening on http://127.0.0.1:${port}`);
+app.listen(port, host, () => {
+  console.log(`PrivateFish backend listening on http://${host}:${port}`);
 });
