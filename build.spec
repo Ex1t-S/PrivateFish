@@ -55,13 +55,13 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Huangue Fish bot v 1.1.5',
+    name='Huangue Fish bot v 1.1.6',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,  # strip is Linux-only, doesn't work on Windows
     upx=False,     # UPX compression disabled
     upx_exclude=[],
-    runtime_tmpdir=None,
+    runtime_tmpdir='.',
     console=False,
     uac_admin=True,
     disable_windowed_traceback=False,
