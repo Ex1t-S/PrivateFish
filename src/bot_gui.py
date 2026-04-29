@@ -33,6 +33,7 @@ from utils import (
 from window_manager import WindowManager
 from fishing_bot import FishingBot
 from debug_ui import IgnoredPositionsWindow, FishDetectorDebugWindow, StatusLogWindow, InventoryDetectionDebugWindow
+from projekt_hard_install import find_projekt_hard_install
 
 
 class FishSelectionWindow:
@@ -714,7 +715,7 @@ class TimingSettingsWindow:
 class BotGUI:
     """GUI for the fishing bot - supports up to 8 simultaneous windows"""
     
-    BOT_VERSION = "1.1.1"  # Version for config validation and GUI display
+    BOT_VERSION = "1.1.2"  # Version for config validation and GUI display
     ACCENT_COLOR = "#FFBB00"  # Gold color used throughout the GUI
     ES_TEXT = {
         "Game Windows (up to 8)": "Ventanas del juego (hasta 8)",
@@ -813,6 +814,7 @@ class BotGUI:
             'classic_fishing': False,
             'projekt_hard_fishing': False,
             'projekt_hard_debug_only': False,
+            'projekt_hard_path': '',
             'projekt_camera_reset_enabled': True,
             'projekt_camera_hold_key': 'f',
             'projekt_camera_hold_seconds': 2.0,
@@ -859,12 +861,33 @@ class BotGUI:
         self.language = self.config.get('language', 'en')
         
         self.setup_ui()
+        self.root.after(300, self.check_projekt_hard_installation)
         
         # Start RGB wave if it was previously active
         if self.config.get('rgb_wave_active', False):
             self.rgb_wave_active = True
             self.rgb_wave_hue = 0
             self.update_rgb_wave()
+
+    def check_projekt_hard_installation(self):
+        """Checks whether the Projekt Hard client folder exists on this PC."""
+        install = find_projekt_hard_install(self.config.get('projekt_hard_path'))
+        if install:
+            install_path = str(install.path)
+            if self.config.get('projekt_hard_path') != install_path:
+                self.config['projekt_hard_path'] = install_path
+                self.save_config()
+            self.add_status(f"Projekt Hard detected: {install_path}")
+            return
+
+        self.config['projekt_hard_path'] = ''
+        self.add_status("Projekt Hard folder was not detected on this PC.")
+        messagebox.showwarning(
+            "Projekt Hard no detectado",
+            "No encontre la carpeta de Projekt Hard en esta PC.\n\n"
+            "El bot puede abrir igual, pero antes de iniciar tenes que instalar Proyecto Hard "
+            "o abrir el cliente para que aparezca la ventana del juego.",
+        )
         
     def setup_ui(self):
         """Creates the GUI elements"""
