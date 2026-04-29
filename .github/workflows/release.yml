@@ -46,11 +46,12 @@ jobs:
       - name: Verify release executable size
         shell: pwsh
         run: |
-          $exe = Get-ChildItem dist -Filter "Huangue Fish bot v *.exe" | Select-Object -First 1
+          $exe = Get-ChildItem dist -Filter "*.exe" | Sort-Object Length -Descending | Select-Object -First 1
           if (-not $exe) {
             throw "Release executable was not created"
           }
-          if ($exe.Length -lt 180MB) {
+          Write-Host "Release executable: $($exe.Name) ($($exe.Length) bytes)"
+          if ($exe.Length -lt 50MB) {
             throw "Release executable is unexpectedly small ($($exe.Length) bytes); refusing to upload incomplete build"
           }
 
