@@ -15,6 +15,7 @@ __pycache__/
 venv/
 .venv/
 .venv313/
+.venv313tk/
 env/
 
 # IDE settings

@@ -24,7 +24,9 @@ from datetime import datetime
 
 # File paths (defined early for venv check)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-VENV_DIR = os.path.join(SCRIPT_DIR, ".venv313")
+VENV_DIR = os.environ.get("FISHBOT_VENV_DIR", os.path.join(SCRIPT_DIR, ".venv313"))
+if not os.path.isabs(VENV_DIR):
+    VENV_DIR = os.path.join(SCRIPT_DIR, VENV_DIR)
 
 def ensure_venv():
     """Ensures the script is running inside the .venv virtual environment.
@@ -138,7 +140,7 @@ def verify_dependencies():
     # Update these versions to match your production environment
     # BEGIN_REQUIRED_VERSIONS
     required_versions = {
-        'Python': '3.13.13',
+        'Python': '3.13.5',
         'PyInstaller': '6.20.0',
         'Pillow': '12.2.0',
         'pynput': '1.8.1',
