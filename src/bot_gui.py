@@ -20,7 +20,16 @@ try:
 except ImportError:
     keyboard = None
 
-from utils import get_resource_path, MAX_WINDOWS, DEBUG_MODE_EN, DEBUG_PRINTS, load_window_icon
+from utils import (
+    get_resource_path,
+    MAX_WINDOWS,
+    DEBUG_MODE_EN,
+    DEBUG_PRINTS,
+    load_window_icon,
+    is_running_as_admin,
+    input_lock,
+    send_scan_key,
+)
 from window_manager import WindowManager
 from fishing_bot import FishingBot
 from debug_ui import IgnoredPositionsWindow, FishDetectorDebugWindow, StatusLogWindow, InventoryDetectionDebugWindow
@@ -415,7 +424,7 @@ class TimingSettingsWindow:
         'timing_human_max':     0.400,
         'timing_key_hold':      0.025,
         'timing_key_settle':    0.030,
-        'timing_cast_interkey': 0.050,
+        'timing_cast_interkey': 0.350,
         # Game-response waits — safe to tune for your server/PC speed
         'timing_catch_wait':        0.400,
         'timing_open_wait':         0.100,
@@ -423,18 +432,60 @@ class TimingSettingsWindow:
         'timing_drop_settle':       0.120,
         'timing_quickskip_between': 0.100,
         'timing_quickskip_after':   0.100,
+        'timing_projekt_bubble_timeout': 35.000,
+        'timing_projekt_retry_wait':     0.700,
+        'timing_projekt_space_gap':      0.300,
+        'timing_projekt_post_reel_wait': 5.000,
+        'timing_projekt_pre_reel_wait':  1.500,
+        'timing_projekt_space_hold':     0.080,
     }
 
-    def __init__(self, parent, config: dict, on_save_callback, accent_color: str = "#FFBB00"):
+    ES_LABELS = {
+        "Timing Settings": "Ajustes de tiempos",
+        "Only timings that directly produce OS inputs are exposed here.": "Estos tiempos controlan los inputs y esperas que manda el bot.",
+        "Fish Clicking": "Click al pez",
+        "Cursor settle before click": "Espera antes del click",
+        "Mouse button hold": "Duracion del click",
+        "Post-click settle": "Espera despues del click",
+        "Click Rhythm  (Human-like mode)": "Ritmo de clicks (modo humano)",
+        "Min delay between attempts": "Espera minima entre intentos",
+        "Max delay between attempts": "Espera maxima entre intentos",
+        "Key Presses": "Teclas",
+        "Key hold duration": "Duracion de tecla",
+        "Pre-key window settle": "Espera antes de tecla",
+        "Bait & Cast": "Cebo y lanzar cana",
+        "Bait key -> Cast key delay": "Espera tras poner cebo",
+        "Projekt Hard": "Projekt Hard",
+        "Wait for fish bubble": "Esperar globo del pez",
+        "Wait before bait retry": "Espera antes de reintentar cebo",
+        "Gap between reel spaces": "Pausa entre barras",
+        "Wait after reel spaces": "Espera despues de barras",
+        "Wait before reel spaces": "Espera antes de barras",
+        "Reel space key hold": "Duracion de barra",
+        "Camera Test": "Prueba camara",
+        "F zoom out seconds:": "F alejar:",
+        "R zoom in presses:": "R acercar:",
+        "Run Camera Test": "Probar camara",
+        "Reset Defaults": "Restaurar defaults",
+        "Cancel": "Cancelar",
+        "Save": "Guardar",
+        "Invalid Timing": "Tiempo invalido",
+        "Human-like max delay must be greater than min delay.": "La espera maxima debe ser mayor que la minima.",
+        "Use valid numbers for camera test.": "Usa numeros validos para la prueba de camara.",
+        "Valid ranges: F 0-10 seconds, R 0-50 presses.": "Rangos validos: F 0-10 segundos, R 0-50 pulsaciones.",
+    }
+
+    def __init__(self, parent, config: dict, on_save_callback, accent_color: str = "#FFBB00", language: str = "en"):
         self.parent = parent
         self.config = config
         self.on_save_callback = on_save_callback
         self.accent_color = accent_color
+        self.language = language
         self._vars: dict = {}        # key -> tk.IntVar (milliseconds)
         self._val_labels: dict = {}  # key -> tk.Label (value display)
 
         self.window = tk.Toplevel(parent)
-        self.window.title("Timing Settings")
+        self.window.title(self._txt("Timing Settings"))
 
         try:
             dpi = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0
@@ -453,6 +504,9 @@ class TimingSettingsWindow:
 
         self._setup_ui()
 
+    def _txt(self, text: str) -> str:
+        return self.ES_LABELS.get(text, text) if self.language == "es" else text
+
     def _add_row(self, parent, label_text: str, key: str, min_ms: int, max_ms: int):
         """Creates one labelled slider row inside a LabelFrame section."""
         default_ms = int(round(self.DEFAULTS[key] * 1000))
@@ -465,7 +519,7 @@ class TimingSettingsWindow:
         row = tk.Frame(parent, bg="#2a2a2a")
         row.pack(fill=tk.X, padx=4, pady=2)
 
-        tk.Label(row, text=label_text,
+        tk.Label(row, text=self._txt(label_text),
                  font=("Courier New", 8), bg="#2a2a2a", fg="#cccccc",
                  width=27, anchor=tk.W).pack(side=tk.LEFT)
 
@@ -488,14 +542,14 @@ class TimingSettingsWindow:
 
     def _setup_ui(self):
         tk.Label(self.window,
-                 text="Only timings that directly produce OS inputs are exposed here.",
+                 text=self._txt("Only timings that directly produce OS inputs are exposed here."),
                  font=("Courier New", 8), bg="#1a1a1a", fg="#777777").pack(pady=(6, 3))
 
         body = tk.Frame(self.window, bg="#1a1a1a")
         body.pack(fill=tk.BOTH, expand=True, padx=5)
 
         # --- Fish Clicking ---
-        f1 = tk.LabelFrame(body, text="Fish Clicking",
+        f1 = tk.LabelFrame(body, text=self._txt("Fish Clicking"),
                            font=("Courier New", 9, "bold"),
                            bg="#2a2a2a", fg=self.accent_color, padx=4, pady=3)
         f1.pack(fill=tk.X, pady=(0, 4))
@@ -504,7 +558,7 @@ class TimingSettingsWindow:
         self._add_row(f1, "Post-click settle",           'timing_post_click',    10, 100)
 
         # --- Click Rhythm ---
-        f2 = tk.LabelFrame(body, text="Click Rhythm  (Human-like mode)",
+        f2 = tk.LabelFrame(body, text=self._txt("Click Rhythm  (Human-like mode)"),
                            font=("Courier New", 9, "bold"),
                            bg="#2a2a2a", fg=self.accent_color, padx=4, pady=3)
         f2.pack(fill=tk.X, pady=(0, 4))
@@ -512,7 +566,7 @@ class TimingSettingsWindow:
         self._add_row(f2, "Max delay between attempts",  'timing_human_max', 100, 1200)
 
         # --- Key Presses ---
-        f3 = tk.LabelFrame(body, text="Key Presses",
+        f3 = tk.LabelFrame(body, text=self._txt("Key Presses"),
                            font=("Courier New", 9, "bold"),
                            bg="#2a2a2a", fg=self.accent_color, padx=4, pady=3)
         f3.pack(fill=tk.X, pady=(0, 4))
@@ -520,53 +574,74 @@ class TimingSettingsWindow:
         self._add_row(f3, "Pre-key window settle",       'timing_key_settle',  10,  60)
 
         # --- Bait & Cast ---
-        f4 = tk.LabelFrame(body, text="Bait & Cast",
+        f4 = tk.LabelFrame(body, text=self._txt("Bait & Cast"),
                            font=("Courier New", 9, "bold"),
                            bg="#2a2a2a", fg=self.accent_color, padx=4, pady=3)
         f4.pack(fill=tk.X, pady=(0, 4))
-        self._add_row(f4, "Bait key → Cast key delay", 'timing_cast_interkey', 20, 200)
+        self._add_row(f4, "Bait key -> Cast key delay", 'timing_cast_interkey', 100, 1500)
 
-        # --- Item Handling ---
-        f5 = tk.LabelFrame(body, text="Item Handling  (game-response waits)",
+        # --- Projekt Hard ---
+        f8 = tk.LabelFrame(body, text=self._txt("Projekt Hard"),
                            font=("Courier New", 9, "bold"),
                            bg="#2a2a2a", fg=self.accent_color, padx=4, pady=3)
-        f5.pack(fill=tk.X, pady=(0, 4))
-        self._add_row(f5, "Wait for item after catch",    'timing_catch_wait',      100, 1500)
-        self._add_row(f5, "Wait after right-click (open)","timing_open_wait",        50,  500)
-        self._add_row(f5, "Dead-fish re-check delay",     'timing_dead_fish_check',  50,  500)
+        f8.pack(fill=tk.X, pady=(0, 4))
+        self._add_row(f8, "Wait for fish bubble",        'timing_projekt_bubble_timeout', 10000, 60000)
+        self._add_row(f8, "Wait before bait retry",      'timing_projekt_retry_wait',      200,  3000)
+        self._add_row(f8, "Gap between reel spaces",     'timing_projekt_space_gap',        50,   800)
+        self._add_row(f8, "Wait before reel spaces",     'timing_projekt_pre_reel_wait',      0,  2500)
+        self._add_row(f8, "Reel space key hold",         'timing_projekt_space_hold',        30,   200)
+        self._add_row(f8, "Wait after reel spaces",      'timing_projekt_post_reel_wait',  1000, 10000)
 
-        # --- Drop Action ---
-        f6 = tk.LabelFrame(body, text="Drop Action",
+        # --- Camera Test ---
+        f9 = tk.LabelFrame(body, text=self._txt("Camera Test"),
                            font=("Courier New", 9, "bold"),
-                           bg="#2a2a2a", fg=self.accent_color, padx=4, pady=3)
-        f6.pack(fill=tk.X, pady=(0, 4))
-        self._add_row(f6, "Pause between drop steps",    'timing_drop_settle',       50,  600)
+                           bg="#2a2a2a", fg=self.accent_color, padx=4, pady=4)
+        f9.pack(fill=tk.X, pady=(0, 4))
 
-        # --- Quick Skip ---
-        f7 = tk.LabelFrame(body, text="Quick Skip",
-                           font=("Courier New", 9, "bold"),
-                           bg="#2a2a2a", fg=self.accent_color, padx=4, pady=3)
-        f7.pack(fill=tk.X, pady=(0, 4))
-        self._add_row(f7, "Gap between CTRL+G presses",  'timing_quickskip_between', 50,  600)
-        self._add_row(f7, "Settle after quick skip",     'timing_quickskip_after',   50,  400)
+        camera_fields = tk.Frame(f9, bg="#2a2a2a")
+        camera_fields.pack(anchor=tk.W, fill=tk.X)
+
+        tk.Label(camera_fields, text=self._txt("F zoom out seconds:"), bg="#2a2a2a", fg="#cccccc",
+                 font=("Courier New", 8), width=20, anchor=tk.W).grid(row=0, column=0, sticky=tk.W)
+        self.camera_f_hold_var = tk.StringVar(value=str(self.config.get('projekt_camera_hold_seconds', 2.0)))
+        tk.Entry(camera_fields, textvariable=self.camera_f_hold_var,
+                 width=6, bg="#1a1a1a", fg="#00ff00",
+                 font=("Courier New", 8), insertbackground="#00ff00").grid(row=0, column=1, sticky=tk.W, padx=(0, 10))
+
+        tk.Label(camera_fields, text=self._txt("R zoom in presses:"), bg="#2a2a2a", fg="#cccccc",
+                 font=("Courier New", 8), width=18, anchor=tk.W).grid(row=0, column=2, sticky=tk.W)
+        self.camera_r_presses_var = tk.StringVar(value=str(self.config.get('projekt_camera_zoom_in_presses', 9)))
+        tk.Entry(camera_fields, textvariable=self.camera_r_presses_var,
+                 width=5, bg="#1a1a1a", fg="#00ff00",
+                 font=("Courier New", 8), insertbackground="#00ff00").grid(row=0, column=3, sticky=tk.W)
+
+        self.camera_test_btn = tk.Button(f9,
+                                         text=self._txt("Run Camera Test"),
+                                         command=self._run_camera_test,
+                                         bg="#555555", fg=self.accent_color,
+                                         activebackground="#666666",
+                                         disabledforeground="black",
+                                         font=("Courier New", 8), cursor="hand2",
+                                         padx=8, pady=4)
+        self.camera_test_btn.pack(anchor=tk.W, pady=(5, 0))
 
         # --- Buttons ---
         btn_frame = tk.Frame(self.window, bg="#1a1a1a")
         btn_frame.pack(fill=tk.X, padx=5, pady=8)
 
-        tk.Button(btn_frame, text="Reset Defaults",
+        tk.Button(btn_frame, text=self._txt("Reset Defaults"),
                   command=self._reset_defaults,
                   bg="#555555", fg=self.accent_color,
                   font=("Courier New", 8), cursor="hand2",
                   padx=8, pady=6).pack(side=tk.LEFT, padx=3)
 
-        tk.Button(btn_frame, text="Cancel",
+        tk.Button(btn_frame, text=self._txt("Cancel"),
                   command=self.window.destroy,
                   bg="#555555", fg=self.accent_color,
                   font=("Courier New", 9, "bold"), cursor="hand2",
                   padx=10, pady=6).pack(side=tk.RIGHT, padx=3)
 
-        tk.Button(btn_frame, text="Save",
+        tk.Button(btn_frame, text=self._txt("Save"),
                   command=self._save_and_close,
                   bg="#555555", fg=self.accent_color,
                   font=("Courier New", 9, "bold"), cursor="hand2",
@@ -578,16 +653,59 @@ class TimingSettingsWindow:
             var.set(ms)
             if key in self._val_labels:
                 self._val_labels[key].config(text=f"{ms}ms")
+        self.camera_f_hold_var.set("2.0")
+        self.camera_r_presses_var.set("9")
+
+    def _read_camera_values(self, show_errors: bool = False) -> Optional[tuple]:
+        try:
+            f_hold = float(self.camera_f_hold_var.get().strip().replace(',', '.'))
+            r_presses = int(self.camera_r_presses_var.get().strip())
+        except ValueError:
+            if show_errors:
+                messagebox.showerror(self._txt("Camera Test"), self._txt("Use valid numbers for camera test."))
+            return None
+
+        if f_hold < 0 or f_hold > 10 or r_presses < 0 or r_presses > 50:
+            if show_errors:
+                messagebox.showerror(self._txt("Camera Test"), self._txt("Valid ranges: F 0-10 seconds, R 0-50 presses."))
+            return None
+
+        return f_hold, r_presses
+
+    def _sync_camera_config(self, show_errors: bool = False) -> bool:
+        values = self._read_camera_values(show_errors=show_errors)
+        if values is None:
+            return False
+
+        f_hold, r_presses = values
+        self.config['projekt_camera_reset_enabled'] = True
+        self.config['projekt_camera_hold_key'] = 'f'
+        self.config['projekt_camera_hold_seconds'] = f_hold
+        self.config['projekt_camera_zoom_out_presses'] = 0
+        self.config['projekt_camera_zoom_in_presses'] = r_presses
+        self.config['projekt_camera_rotate_key'] = ''
+        self.config['projekt_camera_rotate_presses'] = 0
+        self.config['projekt_camera_key_gap'] = self.config.get('projekt_camera_key_gap', 0.055)
+        return True
+
+    def _run_camera_test(self):
+        values = self._read_camera_values(show_errors=True)
+        if values is None:
+            return
+        self._sync_camera_config(show_errors=False)
+        self.parent.test_camera_setup(values[0], values[1], self.camera_test_btn)
 
     def _save_and_close(self):
         h_min = self._vars['timing_human_min'].get()
         h_max = self._vars['timing_human_max'].get()
         if h_min >= h_max:
-            messagebox.showwarning("Invalid Timing",
-                                   "Human-like max delay must be greater than min delay.")
+            messagebox.showwarning(self._txt("Invalid Timing"),
+                                   self._txt("Human-like max delay must be greater than min delay."))
             return
         for key, var in self._vars.items():
             self.config[key] = var.get() / 1000.0  # ms → seconds
+        if not self._sync_camera_config(show_errors=True):
+            return
         if self.on_save_callback:
             self.on_save_callback()
         self.window.destroy()
@@ -596,12 +714,48 @@ class TimingSettingsWindow:
 class BotGUI:
     """GUI for the fishing bot - supports up to 8 simultaneous windows"""
     
-    BOT_VERSION = "1.1.1"  # Version for config validation and GUI display
+    BOT_VERSION = "1.0"  # Version for config validation and GUI display
     ACCENT_COLOR = "#FFBB00"  # Gold color used throughout the GUI
+    ES_TEXT = {
+        "Game Windows (up to 8)": "Ventanas del juego (hasta 8)",
+        "Refresh\nWindows": "Actualizar\nventanas",
+        "Reset\nClient\nBait": "Resetear\ncebo del\ncliente",
+        "Total Statistics": "Estadisticas totales",
+        "Total\nGames": "Partidas\ntotales",
+        "Active\nWindows": "Ventanas\nactivas",
+        "Total\nbait": "Cebo\ntotal",
+        "Bait\nper\nclient": "Cebo\npor\ncliente",
+        "Bot Configuration": "Configuracion del bot",
+        "Classic Fishing": "Pesca clasica",
+        "PH detect only": "Solo detectar PH",
+        "Delay:": "Espera:",
+        "sec": "seg",
+        "Human-like clicking": "Clicks humanos",
+        "No bait alert": "Alerta sin cebo",
+        "Bait Keys (200 bait each)": "Teclas de cebo (200 cada una)",
+        "⏱ Timing Settings...": "⏱ Ajustes de tiempos...",
+        "Quick Skip": "Salto rapido",
+        "Enable": "Activar",
+        "Horse": "Caballo",
+        "Armor": "Armadura",
+        "Set Armor Slot Coords": "Coord. slot armadura",
+        "Inventory Page Tab Coords": "Coordenadas de paginas del inventario",
+        "Automatic Fish Handling": "Manejo automatico de peces",
+        "Select Fishes/Items": "Seleccionar peces/items",
+        "Set Drop/Sell/Destroy Coords": "Coord. tirar/vender/destruir",
+        "Set Confirm Button Coords": "Coord. boton confirmar",
+        "Not set": "Sin configurar",
+        "Optional": "Opcional",
+        "Start All": "Iniciar todo",
+        "Stop All": "Detener todo",
+        "Resume All (F5)": "Reanudar todo (F5)",
+        "Pause All (F5)": "Pausar todo (F5)",
+        "Donations:": "Donaciones:",
+    }
     
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title(f"Fishing Puzzle Player v{self.BOT_VERSION}")
+        self.root.title(f"Huangue Fish bot v {self.BOT_VERSION}")
         
         # Calculate window height based on DPI scaling
         base_height = 485
@@ -620,14 +774,7 @@ class BotGUI:
         self.root.minsize(660, 430)
         self.root.configure(bg="#000000")
         
-        # Try to load and set window icon
-        icon_path = get_resource_path("monkey.ico")
-        if os.path.exists(icon_path):
-            try:
-                self.root.iconbitmap(icon_path)
-            except Exception as e:
-                if DEBUG_PRINTS:
-                    print(f"Error loading icon: {e}")
+        load_window_icon(self.root)
         
         self.window_manager = WindowManager()
         
@@ -661,9 +808,20 @@ class BotGUI:
         self.config = {
             'version': self.BOT_VERSION,  # Bot version for config validation
             'human_like_clicking': True,
-            'quick_skip': True,
+            'quick_skip': False,
             'sound_alert_on_finish': True,
             'classic_fishing': False,
+            'projekt_hard_fishing': False,
+            'projekt_hard_debug_only': False,
+            'projekt_camera_reset_enabled': True,
+            'projekt_camera_hold_key': 'f',
+            'projekt_camera_hold_seconds': 2.0,
+            'projekt_camera_zoom_out_presses': 0,
+            'projekt_camera_zoom_in_presses': 9,
+            'projekt_camera_rotate_key': '',
+            'projekt_camera_rotate_presses': 0,
+            'projekt_camera_key_gap': 0.055,
+            'language': 'en',
             'classic_fishing_delay': 3.0,  # Delay in seconds after fish detection
             'auto_fish_handling': False,
             'fish_actions': {},  # {filename: 'keep'|'drop'|'open'}
@@ -696,6 +854,9 @@ class BotGUI:
         
         # Load config from file if it exists
         self.load_config()
+        self.config['quick_skip'] = False
+        self.config['auto_fish_handling'] = False
+        self.language = self.config.get('language', 'en')
         
         self.setup_ui()
         
@@ -711,8 +872,8 @@ class BotGUI:
         style = ttk.Style()
         style.theme_use('clam')
         
-        # Try to load and display GIF
-        gif_path = get_resource_path("monkey-eating.gif")
+        # Try to load and display logo
+        gif_path = get_resource_path("ac_valhalla_logo.gif")
         self.photo_images = []
         self.current_frame = 0
         self.gif_label_left = None
@@ -750,16 +911,20 @@ class BotGUI:
         title_container.pack(side=tk.LEFT, padx=10)
         
         # Title (always shown)
-        title = tk.Label(title_container, text=f"Fishing Puzzle Player v{self.BOT_VERSION}", 
-                        font=("Courier New", 16, "bold"), 
+        title = tk.Label(title_container, text=f"Huangue Fish bot v {self.BOT_VERSION}",
+                        font=("Courier New", 16, "bold"),
                         bg="#000000", fg=BotGUI.ACCENT_COLOR)
         title.pack(anchor=tk.CENTER)
-        
-        # Discord info
-        discord_label = tk.Label(title_container, text="Discord: boristei", 
-                                font=("Courier New", 10), 
-                                bg="#000000", fg=BotGUI.ACCENT_COLOR)
-        discord_label.pack(anchor=tk.CENTER)
+
+        self.language_btn = tk.Button(title_container,
+                                      text="GUI: ES",
+                                      command=self.toggle_language,
+                                      font=("Courier New", 8, "bold"),
+                                      bg="#444444", fg=BotGUI.ACCENT_COLOR,
+                                      activebackground="#555555",
+                                      cursor="hand2",
+                                      padx=8, pady=2)
+        self.language_btn.pack(anchor=tk.CENTER, pady=(4, 0))
         
         # Right GIF (only if loaded)
         if self.photo_images:
@@ -1011,6 +1176,28 @@ class BotGUI:
                                               activebackground="#2a2a2a",
                                               font=("Courier New", 9))
         self.classic_fishing_check.pack(anchor=tk.W, pady=1)
+
+        self.projekt_hard_var = tk.BooleanVar(value=self.config.get('projekt_hard_fishing', False))
+        self.projekt_hard_check = tk.Checkbutton(left_options_frame,
+                                              text="Projekt Hard",
+                                              variable=self.projekt_hard_var,
+                                              command=self.toggle_projekt_hard_fishing,
+                                              bg="#2a2a2a", fg="#ffffff",
+                                              selectcolor="#1a1a1a",
+                                              activebackground="#2a2a2a",
+                                              font=("Courier New", 9))
+        self.projekt_hard_check.pack(anchor=tk.W, pady=1)
+
+        self.projekt_hard_debug_var = tk.BooleanVar(value=self.config.get('projekt_hard_debug_only', False))
+        self.projekt_hard_debug_check = tk.Checkbutton(left_options_frame,
+                                              text="PH detect only",
+                                              variable=self.projekt_hard_debug_var,
+                                              command=self.toggle_projekt_hard_debug,
+                                              bg="#2a2a2a", fg="#ffffff",
+                                              selectcolor="#1a1a1a",
+                                              activebackground="#2a2a2a",
+                                              font=("Courier New", 9))
+        self.projekt_hard_debug_check.pack(anchor=tk.W, pady=1)
         
         # Delay input for classic fishing (below checkbox)
         classic_delay_frame = tk.Frame(left_options_frame, bg="#2a2a2a")
@@ -1410,6 +1597,15 @@ class BotGUI:
                                              font=("Courier New", 9),
                                              width=10, anchor=tk.W)
         self.confirm_btn_pos_label.pack(side=tk.LEFT)
+
+        # Legacy controls stay wired internally, but they are no longer exposed.
+        self.config['quick_skip'] = False
+        self.config['auto_fish_handling'] = False
+        self.quick_skip_var.set(False)
+        self.auto_fish_var.set(False)
+        quick_skip_frame.pack_forget()
+        inv_page_frame.pack_forget()
+        fish_handling_frame.pack_forget()
         
         # Position capture state
         self._position_capture_mode = None  # None, 'drop', 'confirm', 'armor', or 'inv_page_N'
@@ -1421,12 +1617,15 @@ class BotGUI:
         
         # Update human-like clicking state based on classic fishing (no warning on startup)
         self.toggle_classic_fishing(show_warning=False)
+        self.toggle_projekt_hard_fishing()
+        self.toggle_projekt_hard_debug()
         
-        # Create separate status log window (only if DEBUG_MODE_EN is true)
-        self.status_log_window = None
+        # Live status/debug log window. Hidden by default, available from the GUI.
+        self.status_log_window = StatusLogWindow(self.root)
         if DEBUG_MODE_EN:
-            self.status_log_window = StatusLogWindow(self.root)
-            self.status_log_window.show()  # Show it by default in debug mode
+            self.status_log_window.show()
+
+        self.apply_language()
         
         # Control Buttons Section
         button_frame = tk.Frame(main, bg="#1a1a1a")
@@ -1457,9 +1656,20 @@ class BotGUI:
                                       state=tk.DISABLED,
                                       padx=40, pady=4)
         self.stop_all_btn.pack(side=tk.LEFT, expand=True, padx=3,pady=4)
+
+        self.live_debug_btn = tk.Button(button_frame,
+                                      text="Debug en vivo",
+                                      command=self.show_live_debug,
+                                      font=("Courier New", 10, "bold"),
+                                      bg="#555555", fg=BotGUI.ACCENT_COLOR,
+                                      activebackground="#666666",
+                                      cursor="hand2",
+                                      padx=10, pady=4)
+        self.live_debug_btn.pack(side=tk.LEFT, padx=3, pady=4)
         
         self.add_status("Welcome! Select up to 8 windows and click Start All to begin.")
         self.add_status("Press F5 to pause/resume all bots.")
+        self.add_status(f"Running as admin: {is_running_as_admin()}")
         
         # Refresh windows list after UI is fully initialized
         self.refresh_windows()
@@ -1534,6 +1744,68 @@ class BotGUI:
                             cursor="hand2",
                             padx=3, pady=1)
         copy_btn.pack(side=tk.LEFT, padx=2)
+        self.apply_language()
+
+    def _display_text(self, text: str) -> str:
+        """Returns translated static GUI text for the current language."""
+        if self.language != 'es':
+            reverse = {v: k for k, v in self.ES_TEXT.items()}
+            if text.startswith("Pagina ") and text[7:].isdigit():
+                return f"Page {text[7:]}"
+            if text.startswith("▶ Iniciar todo"):
+                return text.replace("Iniciar todo", "Start All")
+            if text.startswith("⏹ Detener todo"):
+                return text.replace("Detener todo", "Stop All")
+            if text.startswith("▶ Reanudar todo"):
+                return text.replace("Reanudar todo", "Resume All")
+            if text.startswith("⏸ Pausar todo"):
+                return text.replace("Pausar todo", "Pause All")
+            if text.startswith("Donaciones:"):
+                return text.replace("Donaciones:", "Donations:")
+            return reverse.get(text, text)
+
+        reverse = {v: k for k, v in self.ES_TEXT.items()}
+        if text in reverse:
+            return text
+
+        if text.startswith("Page ") and text[5:].isdigit():
+            return f"Pagina {text[5:]}"
+        if text.startswith("▶ Start All"):
+            return text.replace("Start All", "Iniciar todo")
+        if text.startswith("⏹ Stop All"):
+            return text.replace("Stop All", "Detener todo")
+        if text.startswith("▶ Resume All"):
+            return text.replace("Resume All", "Reanudar todo")
+        if text.startswith("⏸ Pause All"):
+            return text.replace("Pause All", "Pausar todo")
+        if text.startswith("Donations:"):
+            return text.replace("Donations:", "Donaciones:")
+        return self.ES_TEXT.get(text, text)
+
+    def apply_language(self, widget=None):
+        """Applies the selected language to static Tk text widgets."""
+        if widget is None:
+            widget = self.root
+
+        for child in widget.winfo_children():
+            try:
+                current = child.cget('text')
+                translated = self._display_text(current)
+                if translated != current:
+                    child.config(text=translated)
+            except Exception:
+                pass
+            self.apply_language(child)
+
+        if hasattr(self, 'language_btn'):
+            self.language_btn.config(text="GUI: English" if self.language == 'es' else "GUI: ES")
+
+    def toggle_language(self):
+        """Toggles GUI language between English and Spanish."""
+        self.language = 'es' if self.language != 'es' else 'en'
+        self.config['language'] = self.language
+        self.save_config()
+        self.apply_language()
     
     def load_config(self):
         """
@@ -1565,6 +1837,24 @@ class BotGUI:
                         self.config['sound_alert_on_finish'] = saved_config['sound_alert_on_finish']
                     if 'classic_fishing' in saved_config:
                         self.config['classic_fishing'] = saved_config['classic_fishing']
+                    if 'projekt_hard_fishing' in saved_config:
+                        self.config['projekt_hard_fishing'] = saved_config['projekt_hard_fishing']
+                    if 'projekt_hard_debug_only' in saved_config:
+                        self.config['projekt_hard_debug_only'] = saved_config['projekt_hard_debug_only']
+                    for _ckey in (
+                        'projekt_camera_reset_enabled',
+                        'projekt_camera_hold_key',
+                        'projekt_camera_hold_seconds',
+                        'projekt_camera_zoom_out_presses',
+                        'projekt_camera_zoom_in_presses',
+                        'projekt_camera_rotate_key',
+                        'projekt_camera_rotate_presses',
+                        'projekt_camera_key_gap',
+                    ):
+                        if _ckey in saved_config:
+                            self.config[_ckey] = saved_config[_ckey]
+                    if 'language' in saved_config:
+                        self.config['language'] = saved_config['language']
                     if 'classic_fishing_delay' in saved_config:
                         self.config['classic_fishing_delay'] = saved_config['classic_fishing_delay']
                     # Restore bait keys
@@ -1599,7 +1889,10 @@ class BotGUI:
                     # Restore timing settings
                     for _tkey in TimingSettingsWindow.DEFAULTS:
                         if _tkey in saved_config:
-                            self.config[_tkey] = saved_config[_tkey]
+                            value = saved_config[_tkey]
+                            if _tkey == 'timing_cast_interkey' and value < 0.1:
+                                value = TimingSettingsWindow.DEFAULTS[_tkey]
+                            self.config[_tkey] = value
                     # Store previously selected windows for later restoration (multi-window)
                     self.previous_windows = saved_config.get('selected_windows', [])
                     # Also support legacy single window
@@ -1620,6 +1913,8 @@ class BotGUI:
         try:
             # Get selected bait keys
             selected_bait_keys = self.get_selected_bait_keys() if hasattr(self, 'bait_key_vars') else ['1', '2', '3', '4']
+            if hasattr(self, 'camera_f_hold_var') and hasattr(self, 'camera_r_presses_var'):
+                self.sync_camera_test_config(show_errors=False)
             
             # Get all selected windows
             selected_windows = []
@@ -1635,6 +1930,17 @@ class BotGUI:
                 'quick_skip_mode': self.config.get('quick_skip_mode', 'horse'),
                 'sound_alert_on_finish': self.config.get('sound_alert_on_finish', True),
                 'classic_fishing': self.config.get('classic_fishing', False),
+                'projekt_hard_fishing': self.config.get('projekt_hard_fishing', False),
+                'projekt_hard_debug_only': self.config.get('projekt_hard_debug_only', False),
+                'projekt_camera_reset_enabled': self.config.get('projekt_camera_reset_enabled', True),
+                'projekt_camera_hold_key': self.config.get('projekt_camera_hold_key', 'f'),
+                'projekt_camera_hold_seconds': self.config.get('projekt_camera_hold_seconds', 2.0),
+                'projekt_camera_zoom_out_presses': self.config.get('projekt_camera_zoom_out_presses', 0),
+                'projekt_camera_zoom_in_presses': self.config.get('projekt_camera_zoom_in_presses', 9),
+                'projekt_camera_rotate_key': self.config.get('projekt_camera_rotate_key', ''),
+                'projekt_camera_rotate_presses': self.config.get('projekt_camera_rotate_presses', 0),
+                'projekt_camera_key_gap': self.config.get('projekt_camera_key_gap', 0.055),
+                'language': self.config.get('language', getattr(self, 'language', 'en')),
                 'classic_fishing_delay': self.config.get('classic_fishing_delay', 3.0),
                 'auto_fish_handling': self.config.get('auto_fish_handling', False),
                 'fish_actions': self.config.get('fish_actions', {}),
@@ -1665,6 +1971,123 @@ class BotGUI:
     def get_max_bait_capacity(self) -> int:
         """Returns max bait capacity based on selected keys (200 per key)."""
         return len(self.get_selected_bait_keys()) * 200
+
+    def _read_camera_test_values(self, show_errors: bool = False) -> Optional[tuple]:
+        """Reads temporary camera test values from the GUI."""
+        if not hasattr(self, 'camera_f_hold_var') or not hasattr(self, 'camera_r_presses_var'):
+            return None
+
+        try:
+            f_hold = float(self.camera_f_hold_var.get().strip().replace(',', '.'))
+            r_presses = int(self.camera_r_presses_var.get().strip())
+        except ValueError:
+            if show_errors:
+                messagebox.showerror("Camara", "Usa un numero valido para F seg y R.")
+            return None
+
+        if f_hold < 0 or f_hold > 10 or r_presses < 0 or r_presses > 50:
+            if show_errors:
+                messagebox.showerror("Camara", "Rangos validos: F entre 0 y 10 seg, R entre 0 y 50.")
+            return None
+
+        return f_hold, r_presses
+
+    def sync_camera_test_config(self, show_errors: bool = False) -> bool:
+        """Stores temporary camera test values in the shared bot config."""
+        values = self._read_camera_test_values(show_errors=show_errors)
+        if values is None:
+            return False
+
+        f_hold, r_presses = values
+        self.config['projekt_camera_reset_enabled'] = True
+        self.config['projekt_camera_hold_key'] = 'f'
+        self.config['projekt_camera_hold_seconds'] = f_hold
+        self.config['projekt_camera_zoom_out_presses'] = 0
+        self.config['projekt_camera_zoom_in_presses'] = r_presses
+        self.config['projekt_camera_rotate_key'] = ''
+        self.config['projekt_camera_rotate_presses'] = 0
+        self.config['projekt_camera_key_gap'] = self.config.get('projekt_camera_key_gap', 0.055)
+        return True
+
+    def _selected_window_name_for_test(self) -> str:
+        if not hasattr(self, 'window_selections'):
+            return ""
+        for i in range(MAX_WINDOWS):
+            selected = self.window_selections.get(i)
+            if selected and selected.get():
+                return selected.get()
+        return ""
+
+    def test_camera_setup(self, f_hold: float = None, r_presses: int = None, button=None):
+        """Runs the temporary Projekt Hard camera setup against the selected window."""
+        if f_hold is None or r_presses is None:
+            if not self.sync_camera_test_config(show_errors=True):
+                return
+            f_hold = self.config.get('projekt_camera_hold_seconds', 2.0)
+            r_presses = self.config.get('projekt_camera_zoom_in_presses', 9)
+        else:
+            self.config['projekt_camera_reset_enabled'] = True
+            self.config['projekt_camera_hold_key'] = 'f'
+            self.config['projekt_camera_hold_seconds'] = f_hold
+            self.config['projekt_camera_zoom_out_presses'] = 0
+            self.config['projekt_camera_zoom_in_presses'] = r_presses
+            self.config['projekt_camera_rotate_key'] = ''
+            self.config['projekt_camera_rotate_presses'] = 0
+            self.config['projekt_camera_key_gap'] = self.config.get('projekt_camera_key_gap', 0.055)
+
+        target_name = self._selected_window_name_for_test()
+        if not target_name:
+            messagebox.showerror("Camara", "Selecciona una ventana antes de probar la camara.")
+            return
+
+        windows = dict(WindowManager.get_all_windows())
+        target_window = windows.get(target_name)
+        if not target_window:
+            messagebox.showerror("Camara", f"No encontre la ventana seleccionada: {target_name}")
+            return
+
+        self.save_config()
+        if button is not None:
+            button.config(state=tk.DISABLED)
+        elif hasattr(self, 'camera_test_btn'):
+            self.camera_test_btn.config(state=tk.DISABLED)
+        thread = threading.Thread(
+            target=self._run_camera_setup_test,
+            args=(target_name, target_window, f_hold, r_presses, button),
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_camera_setup_test(self, target_name: str, target_window, f_hold: float, r_presses: int, button=None):
+        wm = WindowManager()
+        wm.selected_window = target_window
+        key_gap = float(self.config.get('projekt_camera_key_gap', 0.055))
+        self.add_status(f"Prueba camara: {target_name} | F {f_hold:.2f}s + R x{r_presses}")
+        try:
+            with input_lock:
+                wm.activate_window(force_activate=True)
+                time.sleep(0.15)
+
+                if f_hold > 0:
+                    if not send_scan_key('f', f_hold):
+                        pyautogui.keyDown('f')
+                        time.sleep(f_hold)
+                        pyautogui.keyUp('f')
+                    time.sleep(key_gap)
+
+                for _ in range(r_presses):
+                    if not send_scan_key('r', 0.035):
+                        pyautogui.press('r')
+                    time.sleep(key_gap)
+
+            self.add_status("Prueba camara finalizada")
+        except Exception as exc:
+            self.add_status(f"Error en prueba camara: {exc}")
+        finally:
+            if button is not None:
+                self.root.after(0, lambda: button.config(state=tk.NORMAL))
+            elif hasattr(self, 'camera_test_btn'):
+                self.root.after(0, lambda: self.camera_test_btn.config(state=tk.NORMAL))
     
     def update_bait_capacity(self):
         """Updates the bait capacity label based on selected keys."""
@@ -1740,9 +2163,25 @@ class BotGUI:
         Args:
             message: The status message to display
         """
-        if not DEBUG_MODE_EN or not hasattr(self, 'status_log_window') or not self.status_log_window:
+        try:
+            timestamp = time.strftime("%H:%M:%S")
+            with open(os.path.join(os.getcwd(), "bot_runtime.log"), "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {message}\n")
+        except Exception:
+            pass
+
+        if not hasattr(self, 'status_log_window') or not self.status_log_window:
             return
-        self.status_log_window.add_message(message)
+        try:
+            self.root.after(0, lambda msg=message: self.status_log_window.add_message(msg))
+        except Exception:
+            pass
+
+    def show_live_debug(self):
+        """Shows the live status/debug log window."""
+        if not hasattr(self, 'status_log_window') or not self.status_log_window:
+            self.status_log_window = StatusLogWindow(self.root)
+        self.status_log_window.show()
     
     def toggle_quick_skip_modes(self):
         """Enables or disables the quick skip mode checkboxes based on the main quick skip checkbox."""
@@ -1808,6 +2247,9 @@ class BotGUI:
         self.config['classic_fishing'] = enabled
         
         if enabled:
+            if hasattr(self, 'projekt_hard_var'):
+                self.projekt_hard_var.set(False)
+                self.config['projekt_hard_fishing'] = False
             # Show warning message about classic fishing mode (only if user clicked, not on config load)
             if show_warning:
                 messagebox.showwarning(
@@ -1826,6 +2268,35 @@ class BotGUI:
             # Disable delay entry when classic fishing is disabled
             self.classic_delay_entry.config(state=tk.DISABLED)
         
+        self.save_config()
+
+    def toggle_projekt_hard_fishing(self):
+        """Toggles Projekt Hard bubble-number fishing mode."""
+        enabled = self.projekt_hard_var.get()
+        self.config['projekt_hard_fishing'] = enabled
+
+        if enabled:
+            self.classic_fishing_var.set(False)
+            self.config['classic_fishing'] = False
+            self.classic_delay_entry.config(state=tk.DISABLED)
+            self.human_like_check.config(state=tk.DISABLED)
+        else:
+            if not self.classic_fishing_var.get():
+                self.human_like_check.config(state=tk.NORMAL)
+
+        self.save_config()
+
+    def toggle_projekt_hard_debug(self):
+        """Toggles passive Projekt Hard bubble detection logging."""
+        enabled = self.projekt_hard_debug_var.get()
+        self.config['projekt_hard_debug_only'] = enabled
+        if enabled:
+            self.projekt_hard_var.set(True)
+            self.config['projekt_hard_fishing'] = True
+            self.classic_fishing_var.set(False)
+            self.config['classic_fishing'] = False
+            self.classic_delay_entry.config(state=tk.DISABLED)
+            self.human_like_check.config(state=tk.DISABLED)
         self.save_config()
     
     def update_classic_delay(self, event=None):
@@ -1865,6 +2336,17 @@ class BotGUI:
     
     def show_drop_config_guide(self):
         """Shows the drop configuration guide message."""
+        if getattr(self, 'language', 'en') == 'es':
+            messagebox.showinfo("Guia de configuracion de drop",
+                                "El bot necesita saber donde hacer click para confirmar el drop, venta o destruccion de items.\n\n"
+                                "Configurá el boton de confirmacion en la seccion 'Manejo automatico de peces' antes de iniciar.\n\n"
+                                "PASOS:\n"
+                                "1. Soltá un item para abrir la ventana de drop/venta/destruccion.\n"
+                                "2. Click en 'Coord. tirar/vender/destruir' y despues click en ese boton del juego.\n"
+                                "3. Click en 'Coord. boton confirmar' y despues click en el boton final de aceptar.\n\n"
+                                "Si tu server solo muestra confirmacion final, dejá el primer boton sin configurar y configurá solo confirmar.\n\n"
+                                "Nota: el boton de drop es opcional.")
+            return
         messagebox.showinfo("Drop Configuration Guide", 
                                        "The fishbot needs to know where to click the confirm button to finalize dropping items.\n\n"
                                        "Please configure the confirm button position in the\n"
@@ -1881,6 +2363,18 @@ class BotGUI:
     
     def show_inv_page_guide(self):
         """Shows setup instructions for inventory page tab coordinates."""
+        if getattr(self, 'language', 'en') == 'es':
+            messagebox.showinfo("Coordenadas de paginas del inventario",
+                               "El bot necesita saber donde estan las pestañas de paginas del inventario para cambiar de pagina automaticamente.\n\n"
+                               "Las paginas 1-4 solo son obligatorias si activas el manejo automatico de peces.\n"
+                               "Las paginas 5-8 son opcionales.\n\n"
+                               "COMO CONFIGURAR:\n"
+                               "1. Abrí el inventario del juego.\n"
+                               "2. Click en un boton 'Pagina N' en el bot.\n"
+                               "3. Click en la pestaña correspondiente dentro del juego.\n"
+                               "4. Repetí para cada pagina.\n\n"
+                               "Tip: clickeá una pestaña inactiva para que el bot pueda usarla al cambiar de pagina.")
+            return
         messagebox.showinfo("Inventory Page Tab Coords",
                            "The bot needs to know where each inventory page tab is so it can\n"
                            "switch pages automatically when the current page fills up.\n\n"
@@ -1898,6 +2392,15 @@ class BotGUI:
         """Shows the quick skip guide message based on selected mode."""
         # Determine which mode is selected
         if self.quick_skip_mode_horse_var.get():
+            if getattr(self, 'language', 'en') == 'es':
+                messagebox.showinfo("Salto rapido - Caballo",
+                                   "Este modo usa CTRL+G para saltar rapido la animacion de pesca.\n\n"
+                                   "COMO FUNCIONA:\n"
+                                   "Despues de pescar, el bot presiona CTRL+G dos veces.\n\n"
+                                   "REQUISITOS:\n"
+                                   "Tenes que tener caballo y CTRL+G debe estar configurado para montar/desmontar.\n\n"
+                                   "Tip: es el metodo por defecto y el mas comun.")
+                return
             messagebox.showinfo("Quick Skip - Horse Mode", 
                                "This mode uses CTRL+G to quickly skip the fishing animation.\n\n"
                                "HOW IT WORKS:\n"
@@ -1907,6 +2410,17 @@ class BotGUI:
                                "• CTRL+G must be bound to mount/dismount horse in your game settings\n\n"
                                "TIP: This is the default and most commonly used quick skip method.")
         else:
+            if getattr(self, 'language', 'en') == 'es':
+                messagebox.showinfo("Salto rapido - Armadura",
+                                   "Este modo hace click derecho en el slot de armadura para saltar la animacion de pesca.\n\n"
+                                   "COMO FUNCIONA:\n"
+                                   "Despues de pescar, el bot hace click derecho en el slot de armadura.\n\n"
+                                   "PASOS:\n"
+                                   "1. Asegurate de tener armadura equipada.\n"
+                                   "2. Click en 'Coord. slot armadura'.\n"
+                                   "3. Click en el slot de armadura dentro del inventario del juego.\n"
+                                   "4. Ya podes iniciar el bot con quick skip por armadura.")
+                return
             messagebox.showinfo("Quick Skip - Armor Mode", 
                                "This mode right-clicks on your armor slot to quickly skip the fishing animation.\n\n"
                                "HOW IT WORKS:\n"
@@ -2294,7 +2808,8 @@ class BotGUI:
             self.root,
             self.config,
             on_save_callback=self.save_config,
-            accent_color=BotGUI.ACCENT_COLOR
+            accent_color=BotGUI.ACCENT_COLOR,
+            language=getattr(self, 'language', 'en')
         )
 
     def on_fish_actions_saved(self, fish_actions: dict):
@@ -2474,16 +2989,17 @@ class BotGUI:
         self.last_action_time = current_time
         self.disable_buttons_for_cooldown()
         
-        # Check that all mandatory inventory page positions (1-4) are set
-        missing_pages = [p for p in range(1, 5) if not self.config.get(f'inv_page_{p}_pos')]
-        if missing_pages:
-            missing_str = ", ".join(f"Page {p}" for p in missing_pages)
-            messagebox.showerror("Inventory Pages Not Configured",
-                               f"All 4 inventory page tab coordinates must be set before starting!\n\n"
-                               f"Missing: {missing_str}\n\n"
-                               f"Click the 'Page N' buttons in the 'Inventory Page Tab Coords'\n"
-                               f"section and click the matching tab in your game window.")
-            return
+        if self.config.get('auto_fish_handling', False):
+            # Check that all mandatory inventory page positions (1-4) are set
+            missing_pages = [p for p in range(1, 5) if not self.config.get(f'inv_page_{p}_pos')]
+            if missing_pages:
+                missing_str = ", ".join(f"Page {p}" for p in missing_pages)
+                messagebox.showerror("Inventory Pages Not Configured",
+                                   f"All 4 inventory page tab coordinates must be set before starting!\n\n"
+                                   f"Missing: {missing_str}\n\n"
+                                   f"Click the 'Page N' buttons in the 'Inventory Page Tab Coords'\n"
+                                   f"section and click the matching tab in your game window.")
+                return
 
         # Check if bait keys are selected FIRST (before checking bait amounts)
         selected_bait_keys = self.get_selected_bait_keys()
@@ -2554,6 +3070,8 @@ class BotGUI:
         self.config['quick_skip'] = self.quick_skip_var.get()
         self.config['sound_alert_on_finish'] = self.sound_alert_var.get()
         self.config['classic_fishing'] = self.classic_fishing_var.get()
+        self.config['projekt_hard_debug_only'] = self.projekt_hard_debug_var.get()
+        self.config['projekt_hard_fishing'] = self.projekt_hard_var.get() or self.config['projekt_hard_debug_only']
         # Update delay from entry field
         try:
             self.config['classic_fishing_delay'] = float(self.classic_delay_var.get())
@@ -2564,6 +3082,10 @@ class BotGUI:
         # Get all available windows
         all_windows = WindowManager.get_all_windows()
         window_dict = {name: win for name, win in all_windows}
+        selected_requested = [self.window_selections[i].get() for i in range(MAX_WINDOWS) if self.window_selections[i].get()]
+        if selected_requested:
+            self.add_status(f"Available windows: {', '.join(window_dict.keys()) if window_dict else 'none'}")
+            self.add_status(f"Selected windows: {', '.join(selected_requested)}")
         
         # Start a bot for each selected window
         started_count = 0
@@ -2628,7 +3150,15 @@ class BotGUI:
             self.add_status(f"[W{bot_id+1}] Bot started for: {selected_name}")
         
         if started_count == 0:
-            messagebox.showerror("Error", "Please select at least one window!")
+            if selected_requested:
+                messagebox.showerror(
+                    "Window not found",
+                    "The selected game window was not found.\n\n"
+                    "Click Refresh Windows, select the Projekt Hard window again, and start the bot.\n\n"
+                    "If the game is running as administrator, open this bot from an administrator terminal too."
+                )
+            else:
+                messagebox.showerror("Error", "Please select at least one window!")
             return
         
         # Disable configuration widgets while bots are running
@@ -2674,13 +3204,13 @@ class BotGUI:
             
             if any_paused:
                 # Show Resume button
-                self.start_pause_btn.config(text="▶ Resume All (F5)", bg="#888888", activebackground="#999999")
+                self.start_pause_btn.config(text=self._display_text("▶ Resume All (F5)"), bg="#888888", activebackground="#999999")
             else:
                 # Show Pause button
-                self.start_pause_btn.config(text="⏸ Pause All (F5)", bg="#888888", activebackground="#999999")
+                self.start_pause_btn.config(text=self._display_text("⏸ Pause All (F5)"), bg="#888888", activebackground="#999999")
         else:
             # No bots running - show Start button
-            self.start_pause_btn.config(state=tk.NORMAL, text="▶ Start All", bg="#888888", activebackground="#999999")
+            self.start_pause_btn.config(state=tk.NORMAL, text=self._display_text("▶ Start All"), bg="#888888", activebackground="#999999")
             self.stop_all_btn.config(state=tk.DISABLED)
         
         # Update active windows count
@@ -2693,6 +3223,8 @@ class BotGUI:
         # Classic fishing checkbox and delay entry
         self.classic_fishing_check.config(state=state)
         self.classic_delay_entry.config(state=state)
+        self.projekt_hard_check.config(state=state)
+        self.projekt_hard_debug_check.config(state=state)
         
         # Human-like clicking checkbox
         self.human_like_check.config(state=state)
@@ -2748,6 +3280,11 @@ class BotGUI:
         # Timing settings button
         if hasattr(self, 'timing_btn'):
             self.timing_btn.config(state=state)
+
+        # Temporary camera test controls
+        for _widget_name in ('camera_f_hold_entry', 'camera_r_presses_entry', 'camera_test_btn'):
+            if hasattr(self, _widget_name):
+                getattr(self, _widget_name).config(state=state)
 
         # Inventory page tab coord buttons
         for _btn in getattr(self, 'inv_page_btns', {}).values():

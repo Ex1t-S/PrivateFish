@@ -74,10 +74,11 @@ class StatusLogWindow(DebugWindow):
 
     def _create_window(self):
         self.window = tk.Toplevel(self.parent)
-        self.window.title("Status Log")
+        self.window.title("Debug en vivo")
         self.window.geometry("900x500")
         self.window.configure(bg="#1a1a1a")
         self.window.resizable(True, True)
+        self.window.attributes("-topmost", True)
         self._apply_icon()
         self._create_header("📋 Status Log")
 

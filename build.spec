@@ -13,15 +13,15 @@ a = Analysis(
     pathex=['src'],
     binaries=[],
     datas=[
-        ('assets/monkey-eating.gif', '.'),
-        ('assets/monkey.ico', '.'),
+        ('assets/ac_valhalla_logo.gif', '.'),
+        ('assets/ac_valhalla.ico', '.'),
         ('assets', 'assets'),
     ],
     hiddenimports=[
         # Only explicitly list what's actually imported
         'PIL.Image',
         'PIL.ImageTk',
-        'PIL.GifImagePlugin',  # For monkey-eating.gif
+        'PIL.GifImagePlugin',
         'PIL.PngImagePlugin',  # For PNG support
         'pynput.keyboard',
         'cv2',
@@ -31,6 +31,8 @@ a = Analysis(
         'pyautogui',
         'mss',
         'pygetwindow',
+        'updater',
+        'version',
     ],
     hookspath=[],
     hooksconfig={},
@@ -51,7 +53,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Fishing Puzzle Player v1.1.1',
+    name='Huangue Fish bot v 1.0',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,  # strip is Linux-only, doesn't work on Windows
@@ -59,8 +61,9 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
+    uac_admin=True,
     disable_windowed_traceback=False,
-    icon=os.path.join(SPECPATH, 'assets/monkey.ico'),
+    icon=os.path.join(SPECPATH, 'assets/ac_valhalla.ico'),
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,

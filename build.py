@@ -24,7 +24,7 @@ from datetime import datetime
 
 # File paths (defined early for venv check)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-VENV_DIR = os.path.join(SCRIPT_DIR, ".venv")
+VENV_DIR = os.path.join(SCRIPT_DIR, ".venv313")
 
 def ensure_venv():
     """Ensures the script is running inside the .venv virtual environment.
@@ -72,8 +72,8 @@ SPEC_FILE = os.path.join(SCRIPT_DIR, "build.spec")
 VERSION_FILE = os.path.join(SCRIPT_DIR, "version.py")
 
 # Patterns to find and replace
-APP_NAME_BASE = "Fishing Puzzle Player"
-APP_NAME_VERSIONED = f"Fishing Puzzle Player v{VERSION}"
+APP_NAME_BASE = "Huangue Fish bot"
+APP_NAME_VERSIONED = f"Huangue Fish bot v {VERSION}"
 
 # ANSI color codes for better output
 class Colors:
@@ -112,22 +112,22 @@ def print_section(title):
 
 def print_success(message):
     """Print a success message."""
-    print(f"{Colors.OKGREEN}✓ {message}{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}[OK] {message}{Colors.ENDC}")
 
 
 def print_warning(message):
     """Print a warning message."""
-    print(f"{Colors.WARNING}⚠ {message}{Colors.ENDC}")
+    print(f"{Colors.WARNING}[WARN] {message}{Colors.ENDC}")
 
 
 def print_error(message):
     """Print an error message."""
-    print(f"{Colors.FAIL}✗ {message}{Colors.ENDC}")
+    print(f"{Colors.FAIL}[ERROR] {message}{Colors.ENDC}")
 
 
 def print_info(message):
     """Print an info message."""
-    print(f"{Colors.OKBLUE}ℹ {message}{Colors.ENDC}")
+    print(f"{Colors.OKBLUE}[INFO] {message}{Colors.ENDC}")
 
 
 def verify_dependencies():
@@ -138,15 +138,15 @@ def verify_dependencies():
     # Update these versions to match your production environment
     # BEGIN_REQUIRED_VERSIONS
     required_versions = {
-        'Python': '3.14.2',
-        'PyInstaller': '6.17.0',
-        'Pillow': '12.1.0',
+        'Python': '3.13.13',
+        'PyInstaller': '6.20.0',
+        'Pillow': '12.2.0',
         'pynput': '1.8.1',
-        'opencv-python-headless': '4.12.0',
-        'numpy': '2.2.6',
-        'psutil': '7.2.1',
+        'opencv-python-headless': '4.13.0',
+        'numpy': '2.4.4',
+        'psutil': '7.2.2',
         'PyAutoGUI': '0.9.54',
-        'mss': '10.1.0',
+        'mss': '10.2.0',
         'pygetwindow': '0.0.9',
     }
     # END_REQUIRED_VERSIONS
@@ -257,8 +257,8 @@ def verify_files():
         MAIN_SCRIPT,
         SPEC_FILE,
         VERSION_FILE,
-        os.path.join(SCRIPT_DIR, 'assets', 'monkey.ico'),
-        os.path.join(SCRIPT_DIR, 'assets', 'monkey-eating.gif'),
+        os.path.join(SCRIPT_DIR, 'assets', 'ac_valhalla.ico'),
+        os.path.join(SCRIPT_DIR, 'assets', 'ac_valhalla_logo.gif'),
     ]
     
     missing = []
@@ -307,7 +307,7 @@ def update_version_file(new_version):
         # Update the global VERSION variable
         global VERSION, APP_NAME_VERSIONED
         VERSION = new_version
-        APP_NAME_VERSIONED = f"Fishing Puzzle Player v{VERSION}"
+        APP_NAME_VERSIONED = f"Huangue Fish bot v {VERSION}"
         
         return True
     except Exception as e:
@@ -363,9 +363,9 @@ def update_version_in_spec():
         with open(SPEC_FILE, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Pattern to match: name='Fishing Puzzle Player vX.X.X',
-        pattern = r"name='Fishing Puzzle Player v[\d.]+'"
-        replacement = f"name='Fishing Puzzle Player v{VERSION}'"
+        # Pattern to match app executable name in the spec file.
+        pattern = r"name='(?:Fishing Puzzle Player v|Huangue Fish bot v )[\d.]+'"
+        replacement = f"name='Huangue Fish bot v {VERSION}'"
         
         new_content = re.sub(pattern, replacement, content)
         

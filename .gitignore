@@ -14,6 +14,7 @@ __pycache__/
 # Virtual environment
 venv/
 .venv/
+.venv313/
 env/
 
 # IDE settings
@@ -24,6 +25,21 @@ env/
 
 # Config files with user data
 bot_config.json
+bot_runtime.log
+github_token.txt
+
+# Release artifacts are uploaded to GitHub Releases, not committed
+dist/*.exe
+
+# Projekt Hard generated debug/training captures
+assets/projekt_hard_chat_*.png
+assets/projekt_hard_debug_search.png
+assets/projekt_hard_detections.rar
+assets/projekt_hard_detections/
+assets/projekt_hard_measure/
+assets/projekt_hard_misses/
+assets/projekt_hard_samples/
+assets/projekt_hard_video_debug/
 
 # OS files
 Thumbs.db

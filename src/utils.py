@@ -6,6 +6,8 @@ import os
 import sys
 import threading
 import winsound
+import ctypes
+import time
 
 # Thread synchronization for mouse/keyboard - prevents race conditions
 input_lock = threading.Lock()
@@ -18,6 +20,99 @@ DEBUG_MODE_EN = False
 
 # Debug prints - enable/disable verbose debug print statements
 DEBUG_PRINTS = False
+
+
+def is_running_as_admin() -> bool:
+    """Returns True when the current process is elevated on Windows."""
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def send_scan_key(key: str, hold_seconds: float = 0.025) -> bool:
+    """Sends a keyboard key using WinAPI SendInput scancodes."""
+    scan_codes = {
+        '1': 0x02, '2': 0x03, '3': 0x04, '4': 0x05,
+        'f1': 0x3B, 'f2': 0x3C, 'f3': 0x3D, 'f4': 0x3E,
+        'space': 0x39,
+        'q': 0x10, 'e': 0x12, 'r': 0x13, 'f': 0x21,
+        'g': 0x22,
+        'l': 0x26,
+        'ctrl': 0x1D,
+    }
+    scan = scan_codes.get(str(key).lower())
+    if scan is None:
+        return False
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
+
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", ctypes.c_long),
+            ("dy", ctypes.c_long),
+            ("mouseData", ctypes.c_ulong),
+            ("dwFlags", ctypes.c_ulong),
+            ("time", ctypes.c_ulong),
+            ("dwExtraInfo", ULONG_PTR),
+        ]
+
+    class KEYBDINPUT(ctypes.Structure):
+        _fields_ = [
+            ("wVk", ctypes.c_ushort),
+            ("wScan", ctypes.c_ushort),
+            ("dwFlags", ctypes.c_ulong),
+            ("time", ctypes.c_ulong),
+            ("dwExtraInfo", ULONG_PTR),
+        ]
+
+    class HARDWAREINPUT(ctypes.Structure):
+        _fields_ = [
+            ("uMsg", ctypes.c_ulong),
+            ("wParamL", ctypes.c_ushort),
+            ("wParamH", ctypes.c_ushort),
+        ]
+
+    class INPUT_UNION(ctypes.Union):
+        _fields_ = [
+            ("mi", MOUSEINPUT),
+            ("ki", KEYBDINPUT),
+            ("hi", HARDWAREINPUT),
+        ]
+
+    class INPUT(ctypes.Structure):
+        _fields_ = [("type", ctypes.c_ulong), ("union", INPUT_UNION)]
+
+    INPUT_KEYBOARD = 1
+    KEYEVENTF_SCANCODE = 0x0008
+    KEYEVENTF_KEYUP = 0x0002
+    ctypes.set_last_error(0)
+    user32.SendInput.argtypes = (ctypes.c_uint, ctypes.POINTER(INPUT), ctypes.c_int)
+    user32.SendInput.restype = ctypes.c_uint
+
+    def _input(flags):
+        item = INPUT()
+        item.type = INPUT_KEYBOARD
+        item.union.ki = KEYBDINPUT(0, scan, flags, 0, 0)
+        return item
+
+    down = _input(KEYEVENTF_SCANCODE)
+    up = _input(KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP)
+    sent = user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(INPUT))
+    if sent != 1:
+        return False
+    time.sleep(max(0.0, hold_seconds))
+    sent = user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(INPUT))
+    return sent == 1
+
+
+def get_last_win_error() -> int:
+    """Returns the last WinAPI error captured through ctypes."""
+    try:
+        return ctypes.get_last_error()
+    except Exception:
+        return 0
 
 
 def get_resource_path(filename: str) -> str:
@@ -89,8 +184,8 @@ def set_window_icon(window, icon_path: str):
 
 
 def load_window_icon(window) -> None:
-    """Applies monkey.ico to a Tk Toplevel window. Silently skips if the file is missing."""
-    set_window_icon(window, get_resource_path("monkey.ico"))
+    """Applies the app icon to a Tk Toplevel window. Silently skips if missing."""
+    set_window_icon(window, get_resource_path("ac_valhalla.ico"))
 
 
 def play_rickroll_beep():
