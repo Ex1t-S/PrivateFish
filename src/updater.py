@@ -195,8 +195,10 @@ class _UpdateProgressWindow:
 
 def _download_asset(asset: dict, destination: Path, progress: _UpdateProgressWindow | None = None) -> None:
     request = urllib.request.Request(asset["url"], headers=_github_headers("application/octet-stream"))
+    partial = destination.with_name(f"{destination.name}.part")
+    partial.unlink(missing_ok=True)
     with urllib.request.urlopen(request, timeout=60) as response:
-        with destination.open("wb") as f:
+        with partial.open("wb") as f:
             downloaded = 0
             while True:
                 chunk = response.read(1024 * 1024)
@@ -206,6 +208,9 @@ def _download_asset(asset: dict, destination: Path, progress: _UpdateProgressWin
                 downloaded += len(chunk)
                 if progress:
                     progress.update(downloaded)
+            f.flush()
+            os.fsync(f.fileno())
+    partial.replace(destination)
 
 
 def _verify_digest(path: Path, digest: str | None) -> bool:
@@ -218,21 +223,84 @@ def _verify_digest(path: Path, digest: str | None) -> bool:
     return actual == expected
 
 
-def _launch_replacer(downloaded_exe: Path, current_exe: Path) -> None:
+def _launch_replacer(downloaded_exe: Path, current_exe: Path, expected_size: int = 0) -> None:
     helper_path = Path(tempfile.gettempdir()) / f"huangue_update_{os.getpid()}.cmd"
+    log_path = current_exe.with_name("bot_runtime.log")
+    staged_exe = current_exe.with_name(f"{current_exe.name}.update")
+    backup_exe = current_exe.with_name(f"{current_exe.name}.bak")
     helper = f"""@echo off
 setlocal
 set "SRC={downloaded_exe}"
 set "DST={current_exe}"
+set "STAGE={staged_exe}"
+set "BAK={backup_exe}"
 set "PID={os.getpid()}"
+set "EXPECTED_SIZE={expected_size}"
+set "LOG={log_path}"
+echo [%date% %time%] update helper started >> "%LOG%"
 :wait
 tasklist /FI "PID eq %PID%" | find "%PID%" >nul
 if not errorlevel 1 (
   timeout /t 1 /nobreak >nul
   goto wait
 )
-move /Y "%SRC%" "%DST%" >nul
+set /a TRIES=0
+:replace
+set /a TRIES+=1
+echo [%date% %time%] replace attempt %TRIES% >> "%LOG%"
+if exist "%STAGE%" del /F /Q "%STAGE%" >nul 2>nul
+copy /Y "%SRC%" "%STAGE%" >nul
+if errorlevel 1 (
+  echo [%date% %time%] stage copy failed >> "%LOG%"
+  goto retry
+)
+if not exist "%STAGE%" (
+  echo [%date% %time%] stage missing after copy >> "%LOG%"
+  goto retry
+)
+for %%A in ("%STAGE%") do set "STAGE_SIZE=%%~zA"
+if %EXPECTED_SIZE% GTR 0 if not "%STAGE_SIZE%"=="%EXPECTED_SIZE%" (
+  echo [%date% %time%] stage size mismatch: %STAGE_SIZE% expected %EXPECTED_SIZE% >> "%LOG%"
+  goto retry
+)
+if exist "%BAK%" del /F /Q "%BAK%" >nul 2>nul
+move /Y "%DST%" "%BAK%" >nul
+if errorlevel 1 (
+  echo [%date% %time%] backup move failed >> "%LOG%"
+  goto retry
+)
+move /Y "%STAGE%" "%DST%" >nul
+if errorlevel 1 (
+  echo [%date% %time%] final move failed, restoring backup >> "%LOG%"
+  if exist "%BAK%" move /Y "%BAK%" "%DST%" >nul
+  goto retry
+)
+if not exist "%DST%" (
+  echo [%date% %time%] destination missing after final move >> "%LOG%"
+  if exist "%BAK%" move /Y "%BAK%" "%DST%" >nul
+  goto retry
+)
+for %%A in ("%DST%") do set "DST_SIZE=%%~zA"
+if %EXPECTED_SIZE% GTR 0 if not "%DST_SIZE%"=="%EXPECTED_SIZE%" (
+  echo [%date% %time%] destination size mismatch: %DST_SIZE% expected %EXPECTED_SIZE% >> "%LOG%"
+  if exist "%BAK%" move /Y "%BAK%" "%DST%" >nul
+  goto retry
+)
+echo [%date% %time%] replacement complete, launching >> "%LOG%"
+timeout /t 1 /nobreak >nul
 start "" "%DST%"
+goto cleanup
+:retry
+if %TRIES% GEQ 30 (
+  echo [%date% %time%] replacement failed after retries >> "%LOG%"
+  goto cleanup
+)
+timeout /t 1 /nobreak >nul
+goto replace
+:cleanup
+if exist "%STAGE%" del /F /Q "%STAGE%" >nul 2>nul
+if exist "%BAK%" del /F /Q "%BAK%" >nul 2>nul
+if exist "%SRC%" del /F /Q "%SRC%" >nul 2>nul
 del "%~f0"
 """
     helper_path.write_text(helper, encoding="utf-8")
@@ -271,7 +339,8 @@ def check_for_update(current_version: str) -> bool:
 
         expected_size = int(asset.get("size") or 0)
         progress = _UpdateProgressWindow(current_version, remote_version, expected_size)
-        target = Path(tempfile.gettempdir()) / asset["name"]
+        target = Path(tempfile.gettempdir()) / f"huangue_update_{os.getpid()}_{asset['name']}"
+        target.unlink(missing_ok=True)
         _log(f"downloading {asset['name']} from release {remote_version}")
         _download_asset(asset, target, progress)
         progress.done()
@@ -288,7 +357,7 @@ def check_for_update(current_version: str) -> bool:
             target.unlink(missing_ok=True)
             return False
 
-        _launch_replacer(target, current_exe)
+        _launch_replacer(target, current_exe, expected_size)
         return True
     except (urllib.error.URLError, TimeoutError) as exc:
         _log(f"network check failed: {exc}")
