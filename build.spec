@@ -3,6 +3,10 @@
 # Bundles the executable with the icon and GIF resources
 
 import os
+import sys
+
+python_base = sys.base_prefix
+python_dlls = os.path.join(python_base, 'DLLs')
 
 # No module exclusions - include everything to avoid missing library errors
 # This will result in a larger executable but ensures all dependencies are present
@@ -11,14 +15,31 @@ excludes = []
 a = Analysis(
     ['src/fishing_bot.py'],
     pathex=['src'],
-    binaries=[],
+    binaries=[
+        (os.path.join(python_dlls, '_tkinter.pyd'), '.'),
+        (os.path.join(python_dlls, 'tcl86t.dll'), '.'),
+        (os.path.join(python_dlls, 'tk86t.dll'), '.'),
+    ],
     datas=[
         ('assets/ac_valhalla_logo.gif', '.'),
         ('assets/ac_valhalla.ico', '.'),
         ('assets', 'assets'),
+        (os.path.join(python_base, 'tcl', 'tcl8.6'), '_tcl_data'),
+        (os.path.join(python_base, 'tcl', 'tk8.6'), '_tk_data'),
+        (os.path.join(python_base, 'tcl', 'tcl8'), '_tcl_data/tcl8'),
+        (os.path.join(python_base, 'tcl', 'dde1.4'), '_tcl_data/dde1.4'),
+        (os.path.join(python_base, 'tcl', 'reg1.3'), '_tcl_data/reg1.3'),
+        (os.path.join(python_base, 'Lib', 'tkinter'), 'tkinter'),
     ],
     hiddenimports=[
         # Only explicitly list what's actually imported
+        '_tkinter',
+        'tkinter',
+        'tkinter.colorchooser',
+        'tkinter.filedialog',
+        'tkinter.font',
+        'tkinter.messagebox',
+        'tkinter.ttk',
         'PIL.Image',
         'PIL.ImageTk',
         'PIL.GifImagePlugin',
