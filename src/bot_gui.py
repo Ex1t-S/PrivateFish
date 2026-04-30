@@ -434,14 +434,12 @@ class TimingSettingsWindow:
         'timing_quickskip_after':   0.100,
         'timing_projekt_bubble_timeout': 35.000,
         'timing_projekt_retry_wait':     0.700,
-        'timing_projekt_space_gap':      0.300,
         'timing_projekt_bait_to_cast_min': 0.152,
         'timing_projekt_bait_to_cast_max': 0.746,
         'timing_projekt_space_gap_min':    0.300,
         'timing_projekt_space_gap_max':    0.800,
         'timing_projekt_after_result_min': 1.000,
         'timing_projekt_after_result_max': 5.000,
-        'timing_projekt_post_reel_wait': 5.000,
         'timing_projekt_pre_reel_wait':  1.500,
         'timing_projekt_space_hold':     0.080,
     }
@@ -464,14 +462,12 @@ class TimingSettingsWindow:
         "Projekt Hard": "Projekt Hard",
         "Wait for fish bubble": "Esperar globo del pez",
         "Wait before bait retry": "Espera antes de reintentar cebo",
-        "Gap between reel spaces": "Pausa entre barras",
         "Bait -> Cast min": "Cebo -> cana min",
         "Bait -> Cast max": "Cebo -> cana max",
         "Gap between spaces min": "Pausa entre barras min",
         "Gap between spaces max": "Pausa entre barras max",
         "After OCR result min": "Post resultado OCR min",
         "After OCR result max": "Post resultado OCR max",
-        "Wait after reel spaces": "Espera despues de barras",
         "Wait before reel spaces": "Espera antes de barras",
         "Reel space key hold": "Duracion de barra",
         "Camera Test": "Prueba camara",
@@ -600,7 +596,6 @@ class TimingSettingsWindow:
         f8.pack(fill=tk.X, pady=(0, 4))
         self._add_row(f8, "Wait for fish bubble",        'timing_projekt_bubble_timeout', 10000, 60000)
         self._add_row(f8, "Wait before bait retry",      'timing_projekt_retry_wait',      200,  3000)
-        self._add_row(f8, "Gap between reel spaces",     'timing_projekt_space_gap',        50,   800)
         self._add_row(f8, "Bait -> Cast min",            'timing_projekt_bait_to_cast_min',  50,  1500)
         self._add_row(f8, "Bait -> Cast max",            'timing_projekt_bait_to_cast_max',  50,  2000)
         self._add_row(f8, "Gap between spaces min",      'timing_projekt_space_gap_min',     50,  1500)
@@ -609,7 +604,6 @@ class TimingSettingsWindow:
         self._add_row(f8, "After OCR result max",        'timing_projekt_after_result_max',   0, 15000)
         self._add_row(f8, "Wait before reel spaces",     'timing_projekt_pre_reel_wait',      0,  2500)
         self._add_row(f8, "Reel space key hold",         'timing_projekt_space_hold',        30,   200)
-        self._add_row(f8, "Wait after reel spaces",      'timing_projekt_post_reel_wait',  1000, 10000)
 
         # --- Camera Test ---
         f9 = tk.LabelFrame(body, text=self._txt("Camera Test"),

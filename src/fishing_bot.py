@@ -184,14 +184,12 @@ class FishingBot:
         self._t_qs_after    = config.get('timing_quickskip_after',   0.100)
         self._t_ph_bubble_timeout = max(30.000, config.get('timing_projekt_bubble_timeout', 35.000))
         self._t_ph_retry_wait     = config.get('timing_projekt_retry_wait',     0.700)
-        self._t_ph_space_gap      = config.get('timing_projekt_space_gap',      0.300)
         self._t_ph_bait_to_cast_min = config.get('timing_projekt_bait_to_cast_min', 0.152)
         self._t_ph_bait_to_cast_max = config.get('timing_projekt_bait_to_cast_max', 0.746)
         self._t_ph_space_gap_min = config.get('timing_projekt_space_gap_min', 0.300)
         self._t_ph_space_gap_max = config.get('timing_projekt_space_gap_max', 0.800)
         self._t_ph_after_result_min = config.get('timing_projekt_after_result_min', 1.000)
         self._t_ph_after_result_max = config.get('timing_projekt_after_result_max', 5.000)
-        self._t_ph_post_reel_wait = config.get('timing_projekt_post_reel_wait', 5.000)
         self._t_ph_pre_reel_wait  = config.get('timing_projekt_pre_reel_wait',  1.500)
         self._t_ph_space_hold     = config.get('timing_projekt_space_hold',     0.080)
 
@@ -613,7 +611,6 @@ class FishingBot:
         another bot from interfering between detection and action."""
         if not self.config.get('auto_fish_handling', False):
             if self.config.get('projekt_hard_fishing', False):
-                time.sleep(self._t_ph_post_reel_wait)
                 return
             # Even without auto handling, track inventory fullness so page-switching works
             try:
@@ -3248,14 +3245,12 @@ class FishingBot:
         self._t_qs_after    = self.config.get('timing_quickskip_after',   0.100)
         self._t_ph_bubble_timeout = max(30.000, self.config.get('timing_projekt_bubble_timeout', 35.000))
         self._t_ph_retry_wait     = self.config.get('timing_projekt_retry_wait',     0.700)
-        self._t_ph_space_gap      = self.config.get('timing_projekt_space_gap',      0.300)
         self._t_ph_bait_to_cast_min = self.config.get('timing_projekt_bait_to_cast_min', 0.152)
         self._t_ph_bait_to_cast_max = self.config.get('timing_projekt_bait_to_cast_max', 0.746)
         self._t_ph_space_gap_min = self.config.get('timing_projekt_space_gap_min', 0.300)
         self._t_ph_space_gap_max = self.config.get('timing_projekt_space_gap_max', 0.800)
         self._t_ph_after_result_min = self.config.get('timing_projekt_after_result_min', 1.000)
         self._t_ph_after_result_max = self.config.get('timing_projekt_after_result_max', 5.000)
-        self._t_ph_post_reel_wait = self.config.get('timing_projekt_post_reel_wait', 5.000)
         self._t_ph_pre_reel_wait  = self.config.get('timing_projekt_pre_reel_wait',  1.500)
         self._t_ph_space_hold     = self.config.get('timing_projekt_space_hold',     0.080)
 
@@ -3440,7 +3435,7 @@ class FishingBot:
                         if self.on_status_update:
                             self.on_status_update("[W{}] OCR resultado: espero nueva ultima linea de pesca".format(self.bot_id + 1))
                         chat_state, chat_text = self.wait_for_projekt_chat_result(
-                            timeout=max(8.0, self._t_ph_post_reel_wait + 2.0),
+                            timeout=8.0,
                             baseline_text=chat_before_reel,
                         )
                         if chat_state == "timeout":
@@ -3466,11 +3461,6 @@ class FishingBot:
                                 time.sleep(0.8)
                     else:
                         self.wait_for_projekt_hard_reel_result(press_count)
-                        if self.on_status_update:
-                            self.on_status_update(
-                                f"[W{self.bot_id+1}] Esperando {self._t_ph_post_reel_wait:.1f}s "
-                                "antes de volver a cebar/lanzar"
-                            )
                         self.handle_caught_item()
 
                     self.total_games += 1
