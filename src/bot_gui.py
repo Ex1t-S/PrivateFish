@@ -442,6 +442,8 @@ class TimingSettingsWindow:
         'timing_projekt_after_result_max': 5.000,
         'timing_projekt_pre_reel_wait':  1.500,
         'timing_projekt_space_hold':     0.080,
+        'timing_projekt_space_hold_min': 0.060,
+        'timing_projekt_space_hold_max': 0.120,
     }
 
     ES_LABELS = {
@@ -470,6 +472,8 @@ class TimingSettingsWindow:
         "After OCR result max": "Post resultado OCR max",
         "Wait before reel spaces": "Espera antes de barras",
         "Reel space key hold": "Duracion de barra",
+        "Reel space hold min": "Duracion de barra min",
+        "Reel space hold max": "Duracion de barra max",
         "Camera Test": "Prueba camara",
         "F zoom out seconds:": "F alejar:",
         "R zoom in presses:": "R acercar:",
@@ -603,7 +607,8 @@ class TimingSettingsWindow:
         self._add_row(f8, "After OCR result min",        'timing_projekt_after_result_min',   0, 10000)
         self._add_row(f8, "After OCR result max",        'timing_projekt_after_result_max',   0, 15000)
         self._add_row(f8, "Wait before reel spaces",     'timing_projekt_pre_reel_wait',      0,  2500)
-        self._add_row(f8, "Reel space key hold",         'timing_projekt_space_hold',        30,   200)
+        self._add_row(f8, "Reel space hold min",         'timing_projekt_space_hold_min',     30,   250)
+        self._add_row(f8, "Reel space hold max",         'timing_projekt_space_hold_max',     30,   350)
 
         # --- Camera Test ---
         f9 = tk.LabelFrame(body, text=self._txt("Camera Test"),
@@ -719,6 +724,7 @@ class TimingSettingsWindow:
             ('timing_projekt_bait_to_cast_min', 'timing_projekt_bait_to_cast_max'),
             ('timing_projekt_space_gap_min', 'timing_projekt_space_gap_max'),
             ('timing_projekt_after_result_min', 'timing_projekt_after_result_max'),
+            ('timing_projekt_space_hold_min', 'timing_projekt_space_hold_max'),
         )
         for min_key, max_key in timing_ranges:
             if self._vars[max_key].get() < self._vars[min_key].get():

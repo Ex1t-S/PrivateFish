@@ -192,6 +192,8 @@ class FishingBot:
         self._t_ph_after_result_max = config.get('timing_projekt_after_result_max', 5.000)
         self._t_ph_pre_reel_wait  = config.get('timing_projekt_pre_reel_wait',  1.500)
         self._t_ph_space_hold     = config.get('timing_projekt_space_hold',     0.080)
+        self._t_ph_space_hold_min = config.get('timing_projekt_space_hold_min', self._t_ph_space_hold)
+        self._t_ph_space_hold_max = config.get('timing_projekt_space_hold_max', self._t_ph_space_hold)
 
     def _random_timing_delay(self, min_value: float, max_value: float) -> float:
         """Returns a random delay, tolerating stale configs with swapped bounds."""
@@ -1255,15 +1257,16 @@ class FishingBot:
             try:
                 self.window_manager.activate_window()
                 time.sleep(self._t_key_set)
+                hold_delay = self._random_timing_delay(self._t_ph_space_hold_min, self._t_ph_space_hold_max)
 
-                if not send_scan_key('space', self._t_ph_space_hold):
+                if not send_scan_key('space', hold_delay):
                     if self.on_status_update:
                         self.on_status_update(
                             f"[W{self.bot_id+1}] SendInput failed for PH space "
                             f"(winerr {get_last_win_error()}); falling back to pynput"
                         )
                     self.keyboard_controller.press(Key.space)
-                    time.sleep(self._t_ph_space_hold)
+                    time.sleep(hold_delay)
                     self.keyboard_controller.release(Key.space)
 
                 if self.on_status_update:
@@ -1272,7 +1275,7 @@ class FishingBot:
                         elapsed = f", +{int((time.time() - self._ph_last_bubble_decision_at) * 1000)}ms desde decision"
                     self.on_status_update(
                         f"[W{self.bot_id+1}] Barra {index}/{total} enviada "
-                        f"(hold {int(self._t_ph_space_hold * 1000)}ms{elapsed})"
+                        f"(hold {int(hold_delay * 1000)}ms{elapsed})"
                     )
             except Exception as e:
                 if self.on_status_update:
@@ -3253,6 +3256,8 @@ class FishingBot:
         self._t_ph_after_result_max = self.config.get('timing_projekt_after_result_max', 5.000)
         self._t_ph_pre_reel_wait  = self.config.get('timing_projekt_pre_reel_wait',  1.500)
         self._t_ph_space_hold     = self.config.get('timing_projekt_space_hold',     0.080)
+        self._t_ph_space_hold_min = self.config.get('timing_projekt_space_hold_min', self._t_ph_space_hold)
+        self._t_ph_space_hold_max = self.config.get('timing_projekt_space_hold_max', self._t_ph_space_hold)
 
         # Reset bait if starting with 0 or negative bait
         max_bait = len(self.bait_keys) * 200
