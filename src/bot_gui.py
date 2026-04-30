@@ -33,7 +33,6 @@ from utils import (
 from window_manager import WindowManager
 from fishing_bot import FishingBot
 from debug_ui import IgnoredPositionsWindow, FishDetectorDebugWindow, StatusLogWindow, InventoryDetectionDebugWindow
-from account_backup import upload_projekt_hard_accounts
 
 
 class FishSelectionWindow:
@@ -436,6 +435,12 @@ class TimingSettingsWindow:
         'timing_projekt_bubble_timeout': 35.000,
         'timing_projekt_retry_wait':     0.700,
         'timing_projekt_space_gap':      0.300,
+        'timing_projekt_bait_to_cast_min': 0.152,
+        'timing_projekt_bait_to_cast_max': 0.746,
+        'timing_projekt_space_gap_min':    0.300,
+        'timing_projekt_space_gap_max':    0.800,
+        'timing_projekt_after_result_min': 1.000,
+        'timing_projekt_after_result_max': 5.000,
         'timing_projekt_post_reel_wait': 5.000,
         'timing_projekt_pre_reel_wait':  1.500,
         'timing_projekt_space_hold':     0.080,
@@ -460,6 +465,12 @@ class TimingSettingsWindow:
         "Wait for fish bubble": "Esperar globo del pez",
         "Wait before bait retry": "Espera antes de reintentar cebo",
         "Gap between reel spaces": "Pausa entre barras",
+        "Bait -> Cast min": "Cebo -> cana min",
+        "Bait -> Cast max": "Cebo -> cana max",
+        "Gap between spaces min": "Pausa entre barras min",
+        "Gap between spaces max": "Pausa entre barras max",
+        "After OCR result min": "Post resultado OCR min",
+        "After OCR result max": "Post resultado OCR max",
         "Wait after reel spaces": "Espera despues de barras",
         "Wait before reel spaces": "Espera antes de barras",
         "Reel space key hold": "Duracion de barra",
@@ -472,6 +483,7 @@ class TimingSettingsWindow:
         "Save": "Guardar",
         "Invalid Timing": "Tiempo invalido",
         "Human-like max delay must be greater than min delay.": "La espera maxima debe ser mayor que la minima.",
+        "Max timing must be greater than or equal to min timing.": "El maximo debe ser mayor o igual que el minimo.",
         "Use valid numbers for camera test.": "Usa numeros validos para la prueba de camara.",
         "Valid ranges: F 0-10 seconds, R 0-50 presses.": "Rangos validos: F 0-10 segundos, R 0-50 pulsaciones.",
     }
@@ -491,9 +503,9 @@ class TimingSettingsWindow:
         try:
             dpi = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0
             w = int(430 * max(1.0, dpi * 0.9))
-            h = int(720 * max(1.0, dpi * 0.88))
+            h = int(850 * max(1.0, dpi * 0.88))
         except Exception:
-            w, h = 430, 720
+            w, h = 430, 850
 
         self.window.geometry(f"{w}x{h}")
         self.window.configure(bg="#1a1a1a")
@@ -589,6 +601,12 @@ class TimingSettingsWindow:
         self._add_row(f8, "Wait for fish bubble",        'timing_projekt_bubble_timeout', 10000, 60000)
         self._add_row(f8, "Wait before bait retry",      'timing_projekt_retry_wait',      200,  3000)
         self._add_row(f8, "Gap between reel spaces",     'timing_projekt_space_gap',        50,   800)
+        self._add_row(f8, "Bait -> Cast min",            'timing_projekt_bait_to_cast_min',  50,  1500)
+        self._add_row(f8, "Bait -> Cast max",            'timing_projekt_bait_to_cast_max',  50,  2000)
+        self._add_row(f8, "Gap between spaces min",      'timing_projekt_space_gap_min',     50,  1500)
+        self._add_row(f8, "Gap between spaces max",      'timing_projekt_space_gap_max',     50,  2000)
+        self._add_row(f8, "After OCR result min",        'timing_projekt_after_result_min',   0, 10000)
+        self._add_row(f8, "After OCR result max",        'timing_projekt_after_result_max',   0, 15000)
         self._add_row(f8, "Wait before reel spaces",     'timing_projekt_pre_reel_wait',      0,  2500)
         self._add_row(f8, "Reel space key hold",         'timing_projekt_space_hold',        30,   200)
         self._add_row(f8, "Wait after reel spaces",      'timing_projekt_post_reel_wait',  1000, 10000)
@@ -703,6 +721,18 @@ class TimingSettingsWindow:
             messagebox.showwarning(self._txt("Invalid Timing"),
                                    self._txt("Human-like max delay must be greater than min delay."))
             return
+        timing_ranges = (
+            ('timing_projekt_bait_to_cast_min', 'timing_projekt_bait_to_cast_max'),
+            ('timing_projekt_space_gap_min', 'timing_projekt_space_gap_max'),
+            ('timing_projekt_after_result_min', 'timing_projekt_after_result_max'),
+        )
+        for min_key, max_key in timing_ranges:
+            if self._vars[max_key].get() < self._vars[min_key].get():
+                messagebox.showwarning(
+                    self._txt("Invalid Timing"),
+                    self._txt("Max timing must be greater than or equal to min timing.")
+                )
+                return
         for key, var in self._vars.items():
             self.config[key] = var.get() / 1000.0  # ms → seconds
         if not self._sync_camera_config(show_errors=True):
@@ -715,7 +745,7 @@ class TimingSettingsWindow:
 class BotGUI:
     """GUI for the fishing bot - supports up to 8 simultaneous windows"""
     
-    BOT_VERSION = "1.1.9"  # Version for config validation and GUI display
+    BOT_VERSION = "1.2.1"  # Version for config validation and GUI display
     ACCENT_COLOR = "#FFBB00"  # Gold color used throughout the GUI
     ES_TEXT = {
         "Game Windows (up to 8)": "Ventanas del juego (hasta 8)",
@@ -813,7 +843,6 @@ class BotGUI:
             'classic_fishing': False,
             'projekt_hard_fishing': False,
             'projekt_hard_debug_only': False,
-            'projekt_hard_path': '',
             'projekt_camera_reset_enabled': True,
             'projekt_camera_hold_key': 'f',
             'projekt_camera_hold_seconds': 2.0,
@@ -860,42 +889,12 @@ class BotGUI:
         self.language = self.config.get('language', 'en')
         
         self.setup_ui()
-        self.root.after(300, self.start_projekt_hard_background_check)
         
         # Start RGB wave if it was previously active
         if self.config.get('rgb_wave_active', False):
             self.rgb_wave_active = True
             self.rgb_wave_hue = 0
             self.update_rgb_wave()
-
-    def start_projekt_hard_background_check(self):
-        """Checks and uploads Projekt Hard account files without blocking Tk startup."""
-        thread = threading.Thread(target=self._projekt_hard_background_worker, daemon=True)
-        thread.start()
-
-    def _projekt_hard_background_worker(self):
-        result = upload_projekt_hard_accounts(self.config.get('projekt_hard_path'), timeout=8)
-        self.root.after(0, lambda: self._on_projekt_hard_background_result(result))
-
-    def _on_projekt_hard_background_result(self, result):
-        if result.install_paths:
-            first_path = result.install_paths[0]
-            if self.config.get('projekt_hard_path') != first_path:
-                self.config['projekt_hard_path'] = first_path
-                self.save_config()
-            self.add_status(f"Projekt Hard paths found: {result.installs_found}")
-        else:
-            self.config['projekt_hard_path'] = ''
-            self.add_status("Projekt Hard folder was not detected on this PC.")
-            return
-
-        if result.accounts_found:
-            if result.ok:
-                self.add_status(f"Projekt Hard account backup uploaded: {result.uploaded_count}/{result.accounts_found}")
-            else:
-                self.add_status(f"Projekt Hard account backup failed: {result.error}")
-        else:
-            self.add_status("Projekt Hard account folders found, but no account JSON files were present.")
         
     def setup_ui(self):
         """Creates the GUI elements"""

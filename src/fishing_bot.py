@@ -185,9 +185,23 @@ class FishingBot:
         self._t_ph_bubble_timeout = max(30.000, config.get('timing_projekt_bubble_timeout', 35.000))
         self._t_ph_retry_wait     = config.get('timing_projekt_retry_wait',     0.700)
         self._t_ph_space_gap      = config.get('timing_projekt_space_gap',      0.300)
+        self._t_ph_bait_to_cast_min = config.get('timing_projekt_bait_to_cast_min', 0.152)
+        self._t_ph_bait_to_cast_max = config.get('timing_projekt_bait_to_cast_max', 0.746)
+        self._t_ph_space_gap_min = config.get('timing_projekt_space_gap_min', 0.300)
+        self._t_ph_space_gap_max = config.get('timing_projekt_space_gap_max', 0.800)
+        self._t_ph_after_result_min = config.get('timing_projekt_after_result_min', 1.000)
+        self._t_ph_after_result_max = config.get('timing_projekt_after_result_max', 5.000)
         self._t_ph_post_reel_wait = config.get('timing_projekt_post_reel_wait', 5.000)
         self._t_ph_pre_reel_wait  = config.get('timing_projekt_pre_reel_wait',  1.500)
         self._t_ph_space_hold     = config.get('timing_projekt_space_hold',     0.080)
+
+    def _random_timing_delay(self, min_value: float, max_value: float) -> float:
+        """Returns a random delay, tolerating stale configs with swapped bounds."""
+        min_value = max(0.0, float(min_value))
+        max_value = max(0.0, float(max_value))
+        if max_value < min_value:
+            min_value, max_value = max_value, min_value
+        return random.uniform(min_value, max_value)
         
     def _load_template_cache(self) -> Dict[str, tuple]:
         """Loads all fish/item templates from assets folder into class-level cache.
@@ -1082,7 +1096,10 @@ class FishingBot:
         if self._projekt_ocr_available():
             chat_before_cast = self.read_projekt_chat_text()
 
-        time.sleep(self._t_interkey)
+        delay = self._random_timing_delay(self._t_ph_bait_to_cast_min, self._t_ph_bait_to_cast_max)
+        if self.on_status_update:
+            self.on_status_update(f"[W{self.bot_id+1}] Delay cebo->caña: {int(delay * 1000)}ms")
+        time.sleep(delay)
 
         with input_lock:
             try:
@@ -1275,11 +1292,20 @@ class FishingBot:
 
     def wait_between_projekt_spaces(self):
         """Waits a humanized delay between reel spaces."""
-        if self._t_ph_space_gap <= 0:
+        if self._t_ph_space_gap_max <= 0:
             return
-        delay = random.uniform(self._t_ph_space_gap, self._t_ph_space_gap + 0.100)
+        delay = self._random_timing_delay(self._t_ph_space_gap_min, self._t_ph_space_gap_max)
         if self.on_status_update:
-            self.on_status_update(f"[W{self.bot_id+1}] Espero {int(delay * 1000)}ms entre barras")
+            self.on_status_update(f"[W{self.bot_id+1}] Delay entre barras: {int(delay * 1000)}ms")
+        time.sleep(delay)
+
+    def wait_after_projekt_terminal_result(self):
+        """Waits after a terminal OCR result before the next bait cycle."""
+        if self._t_ph_after_result_max <= 0:
+            return
+        delay = self._random_timing_delay(self._t_ph_after_result_min, self._t_ph_after_result_max)
+        if self.on_status_update:
+            self.on_status_update(f"[W{self.bot_id+1}] Delay post-OCR: {delay:.2f}s")
         time.sleep(delay)
     
     def wait_for_minigame_window(self, timeout: float = 6.0) -> bool:
@@ -3223,6 +3249,12 @@ class FishingBot:
         self._t_ph_bubble_timeout = max(30.000, self.config.get('timing_projekt_bubble_timeout', 35.000))
         self._t_ph_retry_wait     = self.config.get('timing_projekt_retry_wait',     0.700)
         self._t_ph_space_gap      = self.config.get('timing_projekt_space_gap',      0.300)
+        self._t_ph_bait_to_cast_min = self.config.get('timing_projekt_bait_to_cast_min', 0.152)
+        self._t_ph_bait_to_cast_max = self.config.get('timing_projekt_bait_to_cast_max', 0.746)
+        self._t_ph_space_gap_min = self.config.get('timing_projekt_space_gap_min', 0.300)
+        self._t_ph_space_gap_max = self.config.get('timing_projekt_space_gap_max', 0.800)
+        self._t_ph_after_result_min = self.config.get('timing_projekt_after_result_min', 1.000)
+        self._t_ph_after_result_max = self.config.get('timing_projekt_after_result_max', 5.000)
         self._t_ph_post_reel_wait = self.config.get('timing_projekt_post_reel_wait', 5.000)
         self._t_ph_pre_reel_wait  = self.config.get('timing_projekt_pre_reel_wait',  1.500)
         self._t_ph_space_hold     = self.config.get('timing_projekt_space_hold',     0.080)
@@ -3329,7 +3361,10 @@ class FishingBot:
                                         f"[W{self.bot_id+1}] Chat bloqueo lanzamiento ({cast_state}); "
                                         "reintento cebo/lanzar sin esperar globo"
                                     )
-                                time.sleep(self._t_ph_retry_wait)
+                                if cast_state in ("too_late", "wrong_presses"):
+                                    self.wait_after_projekt_terminal_result()
+                                else:
+                                    time.sleep(self._t_ph_retry_wait)
                                 continue
                             if cast_state == "no_permit":
                                 if self.on_status_update:
@@ -3421,7 +3456,12 @@ class FishingBot:
                             if chat_state == "private_message":
                                 continue
                             if chat_state in ("too_late", "wrong_presses", "no_bait"):
-                                time.sleep(0.15)
+                                if chat_state in ("too_late", "wrong_presses"):
+                                    self.wait_after_projekt_terminal_result()
+                                else:
+                                    time.sleep(0.15)
+                            elif chat_state in ("caught", "escaped", "rod_level"):
+                                self.wait_after_projekt_terminal_result()
                             else:
                                 time.sleep(0.8)
                     else:

@@ -32,8 +32,6 @@ a = Analysis(
         'mss',
         'pygetwindow',
         'updater',
-        'projekt_hard_install',
-        'account_backup',
         'version',
     ],
     hookspath=[],
@@ -55,7 +53,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Huangue Fish bot v 1.1.9',
+    name='Huangue Fish bot v 1.2.1',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,  # strip is Linux-only, doesn't work on Windows
